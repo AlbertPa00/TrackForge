@@ -1,0 +1,8 @@
+node_modules/
+dist/
+build/
+coverage/
+prisma/migrations/
+*.db
+*.log
+pnpm-lock.yaml

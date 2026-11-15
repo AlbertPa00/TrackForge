@@ -1,0 +1,43 @@
+dn: ou=users,dc=test,dc=local
+objectClass: organizationalUnit
+ou: users
+
+dn: ou=groups,dc=test,dc=local
+objectClass: organizationalUnit
+ou: groups
+
+dn: cn=engineers,ou=groups,dc=test,dc=local
+objectClass: groupOfNames
+cn: engineers
+member: uid=alice,ou=users,dc=test,dc=local
+
+dn: uid=alice,ou=users,dc=test,dc=local
+objectClass: inetOrgPerson
+uid: alice
+cn: Alice Anderson
+sn: Anderson
+givenName: Alice
+displayName: Alice Anderson
+mail: alice@test.local
+userPassword: alice-secret-pass
+memberOf: cn=engineers,ou=groups,dc=test,dc=local
+
+dn: uid=bob,ou=users,dc=test,dc=local
+objectClass: inetOrgPerson
+uid: bob
+cn: Bob Brown
+sn: Brown
+givenName: Bob
+displayName: Bob Brown
+mail: bob@test.local
+userPassword: bob-secret-pass
+
+dn: uid=carol,ou=users,dc=test,dc=local
+objectClass: inetOrgPerson
+uid: carol
+cn: Carol Clark
+sn: Clark
+givenName: Carol
+displayName: Carol Clark
+mail: carol@test.local
+userPassword: carol-secret-pass

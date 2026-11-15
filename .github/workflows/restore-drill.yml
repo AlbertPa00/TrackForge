@@ -1,0 +1,73 @@
+name: restore-drill
+
+# 044 SC-001 — an untested backup is not a backup. Monthly + on-demand:
+# builds the image, seeds data, wipes the schema, restores, diffs counts.
+on:
+  schedule:
+    - cron: '17 3 1 * *' # monthly
+  workflow_dispatch:
+
+jobs:
+  drill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with: { version: 9 }
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Build production image
+        run: docker build -f apps/backend/Dockerfile -t ghcr.io/albertpa00/trackforge:drill .
+
+      - name: Prepare .env
+        run: |
+          cp .env.example .env
+          {
+            echo "POSTGRES_PASSWORD=drill-pw"
+            echo "SESSION_SECRET=drill-secret-value-that-is-32-chars!!"
+            echo "TF_ADMIN_EMAIL=admin@drill.test"
+            echo "TF_ADMIN_PASSWORD=drill-admin-pw-12345"
+            echo "S3_ACCESS_KEY=rustfsadmin"
+            echo "S3_SECRET_KEY=rustfsadmin"
+            echo "TF_TAG=drill"
+          } >> .env
+
+      - name: Stack up + wait for app
+        run: |
+          TF_TAG=drill docker compose -f docker-compose.prod.yml up -d
+          for i in $(seq 1 60); do
+            curl -sf http://localhost:3000/healthz && exit 0 || sleep 3
+          done
+          docker compose -f docker-compose.prod.yml logs app
+          exit 1
+
+      - name: Seed drill data
+        run: |
+          COOKIE=/tmp/drill-cookie.txt
+          curl -sf -c $COOKIE -H 'Content-Type: application/json' \
+            -d '{"email":"admin@drill.test","password":"drill-admin-pw-12345"}' \
+            http://localhost:3000/api/internal/auth/login
+          curl -sf -b $COOKIE -H 'Content-Type: application/json' \
+            -d '{"key":"DRILL","name":"Drill"}' \
+            http://localhost:3000/rest/api/2/project
+          for i in 1 2 3 4 5; do
+            curl -sf -b $COOKIE -H 'Content-Type: application/json' \
+              -d "{\"fields\":{\"project\":{\"key\":\"DRILL\"},\"summary\":\"drill issue $i\",\"issuetype\":{\"name\":\"Task\"}}}" \
+              http://localhost:3000/rest/api/2/issue > /dev/null
+          done
+
+      - name: Run restore drill
+        run: bash scripts/restore-drill.sh
+
+      - name: Logs on failure
+        if: failure()
+        run: docker compose -f docker-compose.prod.yml logs --tail 200 app postgres migrate
+
+      - name: Teardown
+        if: always()
+        run: docker compose -f docker-compose.prod.yml down -v --remove-orphans

@@ -1,0 +1,69 @@
+name: Install smoke
+
+# 043 SC-001 — prove the 10-minute install path on a clean runner.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare .env
+        run: |
+          cp .env.example .env
+          {
+            echo "POSTGRES_PASSWORD=ci-postgres-$RANDOM"
+            echo "SESSION_SECRET=ci-secret-$(date +%s)-padded-past-32-chars"
+            echo "TF_ADMIN_EMAIL=admin@ci.local"
+            echo "TF_ADMIN_PASSWORD=ci-admin-$RANDOM"
+            echo "PUBLIC_BASE_URL=http://localhost:3000"
+          } >> .env
+          sed -i '/^POSTGRES_PASSWORD=change-me/d;/^SESSION_SECRET=change-me/d;/^TF_ADMIN_EMAIL=admin@/d;/^TF_ADMIN_PASSWORD=change-me/d' .env
+          cat .env
+
+      - name: Build app image
+        run: docker compose -f docker-compose.prod.yml build app
+
+      - name: Start stack
+        run: docker compose -f docker-compose.prod.yml up -d
+
+      - name: Wait for health
+        run: |
+          for i in $(seq 1 60); do
+            status=$(docker compose -f docker-compose.prod.yml ps --format json app 2>/dev/null | grep -o '"healthy"' || true)
+            curl -sf http://localhost:3000/healthz > /dev/null && echo "healthy after ${i}s" && exit 0
+            sleep 2
+          done
+          docker compose -f docker-compose.prod.yml logs --tail 100
+          exit 1
+
+      - name: serverInfo reports build metadata
+        run: |
+          curl -sf http://localhost:3000/rest/api/2/serverInfo | tee /tmp/si.json
+          grep -q '"serverTitle":"TrackForge"' /tmp/si.json
+          grep -q '"version"' /tmp/si.json
+
+      - name: SPA served at / (single-origin)
+        run: |
+          curl -sf http://localhost:3000/ | grep -qi '<html'
+          curl -sf http://localhost:3000/projects | grep -qi '<html'  # SPA fallback
+
+      - name: First-run admin can log in
+        run: |
+          . <(grep '^TF_ADMIN_' .env | sed 's/^/export /')
+          curl -sf -X POST http://localhost:3000/api/internal/auth/login \
+            -H 'Content-Type: application/json' \
+            -d "{\"email\":\"$TF_ADMIN_EMAIL\",\"password\":\"$TF_ADMIN_PASSWORD\"}" > /dev/null
+
+      - name: Infra ports stay private
+        run: |
+          ! docker compose -f docker-compose.prod.yml ps --format json | grep -E '"(5432|6379|9000)/(tcp|udp)"'
+
+      - name: Teardown
+        if: always()
+        run: docker compose -f docker-compose.prod.yml down -v

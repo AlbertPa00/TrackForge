@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <title>TrackForge</title>
+    <script>
+      /* Apply the resolved color scheme before first paint (mirrors lib/theme.ts)
+         so neither the canvas nor built-in UI flashes the wrong theme. */
+      (function () {
+        var pref = 'system';
+        try { pref = localStorage.getItem('tf-theme') || 'system'; } catch (e) {}
+        var dark = pref === 'system'
+          ? window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+          : pref === 'dark';
+        var el = document.documentElement;
+        el.dataset.theme = dark ? 'dark' : 'light';
+        el.style.colorScheme = dark ? 'dark' : 'light';
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

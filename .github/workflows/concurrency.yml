@@ -1,0 +1,92 @@
+name: Concurrency soak
+
+# On-demand only (016 convention: perf runs nightly + on-demand) — a 10k-user
+# soak is too heavy and timing-sensitive for per-PR CI.
+
+on:
+  workflow_dispatch:
+    inputs:
+      concurrency:
+        description: 'Virtual users'
+        default: '10000'
+      duration_sec:
+        description: 'Steady-state seconds after ramp'
+        default: '30'
+      sse_hold:
+        description: 'Extra sockets held on /events/stream'
+        default: '0'
+
+env:
+  DATABASE_URL: postgresql://trackforge:trackforge@localhost:5432/trackforge?connection_limit=20
+  TEST_DATABASE_URL: postgresql://trackforge:trackforge@localhost:5432/trackforge_test
+
+jobs:
+  soak:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: trackforge
+          POSTGRES_PASSWORD: trackforge
+          POSTGRES_DB: trackforge
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U trackforge"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20.14.0
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Apply migrations
+        run: |
+          cd apps/backend
+          npx prisma migrate deploy
+
+      - name: Generate Prisma client
+        run: pnpm --filter backend db:generate
+
+      - name: Build backend
+        run: pnpm --filter backend build
+
+      - name: Seed + perf fixture
+        run: |
+          pnpm --filter backend db:seed
+          pnpm --filter backend seed:perf
+
+      - name: Start backend (built bundle, fd headroom for 10k sockets)
+        run: |
+          ulimit -n $(ulimit -Hn) || true
+          cd apps/backend
+          nohup node dist/main.js > /tmp/backend.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf http://localhost:3000/healthz && break || sleep 1; done
+
+      - name: Concurrency soak
+        run: |
+          ulimit -n $(ulimit -Hn) || true
+          pnpm --filter backend perf:check:concurrency
+        env:
+          TRACKFORGE_URL: http://localhost:3000
+          CONCURRENCY: ${{ inputs.concurrency }}
+          DURATION_SEC: ${{ inputs.duration_sec }}
+          SSE_HOLD: ${{ inputs.sse_hold }}
+
+      - name: Backend log tail (on failure)
+        if: failure()
+        run: tail -200 /tmp/backend.log

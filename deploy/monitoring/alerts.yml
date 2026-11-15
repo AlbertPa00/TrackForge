@@ -1,0 +1,51 @@
+# 044 US2 — alert rules. Each maps to a runbook entry in docs/runbook.md.
+groups:
+  - name: trackforge
+    rules:
+      - alert: TrackForgeHighErrorRate
+        expr: rate(tf_requests_errors_total[5m]) / rate(tf_requests_total[5m]) > 0.05
+        for: 5m
+        labels: { severity: page }
+        annotations:
+          summary: '5xx error rate above 5% for 5m'
+          runbook: docs/runbook.md#site-down
+
+      - alert: TrackForgeQueueBacklog
+        expr: tf_job_queue{state="waiting"} > 100
+        for: 10m
+        labels: { severity: warn }
+        annotations:
+          summary: 'durable job queue depth growing'
+          runbook: docs/runbook.md#webhooks-not-firing
+
+      - alert: TrackForgeQueueFailures
+        expr: tf_job_queue{state="failed"} > 10
+        for: 5m
+        labels: { severity: warn }
+        annotations:
+          summary: 'durable jobs failing'
+          runbook: docs/runbook.md#webhooks-not-firing
+
+      - alert: TrackForgeBackupStale
+        expr: (time() - tf_backup_last_success_seconds) > 93600 or tf_backup_last_success_seconds == 0
+        for: 15m
+        labels: { severity: warn }
+        annotations:
+          summary: 'no successful backup in 26h'
+          runbook: docs/runbook.md#backups
+
+      - alert: TrackForgeOutboxLag
+        expr: tf_outbox_undispatched > 500
+        for: 10m
+        labels: { severity: warn }
+        annotations:
+          summary: 'domain events undispatched — notifications/webhooks lagging'
+          runbook: docs/runbook.md#emails-not-sending
+
+      - alert: TrackForgeSlowRequests
+        expr: histogram_quantile(0.95, rate(tf_request_latency_ms_bucket[10m])) > 1000
+        for: 15m
+        labels: { severity: info }
+        annotations:
+          summary: 'p95 request latency above 1s'
+          runbook: docs/runbook.md#slow-jql

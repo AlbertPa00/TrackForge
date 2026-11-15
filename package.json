@@ -1,0 +1,42 @@
+{
+  "name": "trackforge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Self-hosted Jira-compatible issue tracking platform",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "packageManager": "pnpm@9.15.0",
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "format": "prettier --write .",
+    "db:generate": "pnpm --filter backend db:generate",
+    "db:migrate": "pnpm --filter backend db:migrate",
+    "db:seed": "pnpm --filter backend db:seed",
+    "docs:dev": "pnpm --filter trackforge-docs docs:dev",
+    "docs:build": "pnpm --filter backend openapi:export && pnpm --filter trackforge-docs docs:build",
+    "docs:preview": "pnpm --filter trackforge-docs docs:preview"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9",
+    "@types/node": "^20.14.0",
+    "eslint": "^9.39.5",
+    "globals": "^17.14.0",
+    "prettier": "^3.3.0",
+    "turbo": "^2.0.0",
+    "typescript": "5.5.4",
+    "typescript-eslint": "8.71.2"
+  },
+  "pnpm": {
+    "overrides": {
+      "body-parser@<1.20.6": ">=1.20.6",
+      "qs@<6.16.1": ">=6.16.1",
+      "proxy-addr@<2.0.8": ">=2.0.8",
+      "htmlparser2@>=12": "npm:htmlparser2@10.0.0"
+    }
+  }
+}

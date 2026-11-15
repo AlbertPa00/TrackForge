@@ -1,0 +1,80 @@
+name: deploy
+
+# 045 US1 — staging auto-deploys on main; production is a GitHub Environment
+# gate (required reviewers). The prod job deploys the SAME digest that soaked —
+# promote, don't rebuild (FR). Rollback redeploys the previous tag on smoke fail.
+#
+# Deploy targets are environment secrets: STAGING_SSH / PROD_SSH host strings.
+# The actual apply is `docker compose pull && up -d` on the target — swap the
+# run blocks for whatever executor you use. DB only rolls forward (migrations.md).
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Image tag to deploy (default: latest main build)'
+        required: false
+
+env:
+  IMAGE: ghcr.io/albertpa00/trackforge
+
+jobs:
+  staging:
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - name: Resolve tag
+        id: tag
+        run: echo "tag=${{ github.event.inputs.tag || 'latest' }}" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy to staging
+        env:
+          TARGET: ${{ secrets.STAGING_SSH }}
+        run: |
+          # Example executor — replace with your deploy mechanism.
+          ssh "$TARGET" "cd /opt/trackforge && \
+            sed -i 's/^TF_TAG=.*/TF_TAG=${{ steps.tag.outputs.tag }}/' .env && \
+            docker compose -f docker-compose.prod.yml pull app && \
+            docker compose -f docker-compose.prod.yml up -d"
+
+      - name: Smoke
+        env:
+          BASE_URL: ${{ vars.STAGING_URL }}
+          ADMIN_EMAIL: ${{ secrets.STAGING_ADMIN_EMAIL }}
+          ADMIN_PASSWORD: ${{ secrets.STAGING_ADMIN_PASSWORD }}
+        run: node tests/smoke/smoke.mjs
+
+  production:
+    needs: staging
+    runs-on: ubuntu-latest
+    environment: production # ← required-reviewers gate lives on this env
+    steps:
+      - name: Deploy same digest to prod
+        env:
+          TARGET: ${{ secrets.PROD_SSH }}
+        run: |
+          ssh "$TARGET" "cd /opt/trackforge && \
+            cp .env .env.prev && \
+            docker compose -f docker-compose.prod.yml pull app && \
+            docker compose -f docker-compose.prod.yml up -d"
+
+      - name: Smoke
+        id: smoke
+        env:
+          BASE_URL: ${{ vars.PROD_URL }}
+          ADMIN_EMAIL: ${{ secrets.PROD_ADMIN_EMAIL }}
+          ADMIN_PASSWORD: ${{ secrets.PROD_ADMIN_PASSWORD }}
+        run: node tests/smoke/smoke.mjs
+
+      - name: Rollback on smoke failure (image only — DB stays forward)
+        if: failure()
+        env:
+          TARGET: ${{ secrets.PROD_SSH }}
+        run: |
+          ssh "$TARGET" "cd /opt/trackforge && \
+            cp .env.prev .env && \
+            docker compose -f docker-compose.prod.yml up -d"
+          echo '::error::prod smoke failed — rolled back to previous image tag; mark release bad'
+          exit 1

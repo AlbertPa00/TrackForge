@@ -1,0 +1,145 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+env:
+  DATABASE_URL: postgresql://trackforge:trackforge@localhost:5432/trackforge
+  TEST_DATABASE_URL: postgresql://trackforge:trackforge@localhost:5432/trackforge_test
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: trackforge
+          POSTGRES_PASSWORD: trackforge
+          POSTGRES_DB: trackforge
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U trackforge"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20.14.0
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Dependency audit (prod, high+) — allow-list in scripts/audit-allowlist.json
+        run: node scripts/audit-check.mjs
+
+      - name: Env parity (.env.example ↔ docker-compose.prod.yml) — release gate L7
+        run: node scripts/env-parity.mjs
+
+      - name: Test-skip guard (zero skipped/focused tests) — release gate G2.1
+        run: node scripts/test-skip-guard.mjs
+
+      - name: Repo hygiene (secrets, env files, public copy) — release gates G3.6/L5
+        run: node scripts/hygiene-scan.mjs
+
+      - name: Docs claims (cited commands/paths exist) — release gate L3
+        run: node scripts/docs-claims.mjs
+
+      - name: Create test database
+        run: |
+          PGPASSWORD=trackforge psql -h localhost -U trackforge -d trackforge \
+            -c "CREATE DATABASE trackforge_test;"
+
+      - name: Apply migrations
+        run: |
+          cd apps/backend
+          npx prisma migrate deploy
+          DATABASE_URL=$TEST_DATABASE_URL npx prisma migrate deploy
+
+      - name: Generate Prisma client
+        run: pnpm --filter backend db:generate
+
+      - name: Migration expand-contract check (045 US2 — new migrations must be additive)
+        run: node scripts/migration-compat.mjs origin/${{ github.base_ref || 'main' }} || node scripts/migration-compat.mjs HEAD~1
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Backend tests
+        run: pnpm --filter backend test
+
+      - name: Frontend unit tests (016 — 60% gate on named components)
+        run: pnpm --filter frontend test:coverage
+
+      - name: Build frontend
+        run: pnpm --filter frontend build
+
+      - name: Install Playwright browsers
+        run: pnpm --filter frontend exec playwright install --with-deps chromium
+
+      - name: Seed dev database
+        run: pnpm --filter backend db:seed
+
+      - name: Start backend
+        run: |
+          cd apps/backend
+          nohup pnpm dev > /tmp/backend.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf http://localhost:3000/rest/api/2/status && break || sleep 1; done
+
+      - name: Mint CI agent token
+        run: |
+          curl -sf -c /tmp/tf-cookies -X POST http://localhost:3000/api/internal/auth/login \
+            -H 'Content-Type: application/json' \
+            -d '{"email":"admin@trackforge.local","password":"trackforge"}' > /dev/null
+          SECRET=$(curl -sf -b /tmp/tf-cookies -X POST http://localhost:3000/api/internal/tokens \
+            -H 'Content-Type: application/json' \
+            -d '{"name":"ci-eval","scopes":["read","write","admin"]}' \
+            | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>process.stdout.write(JSON.parse(d).secret))")
+          echo "::add-mask::$SECRET"
+          echo "TRACKFORGE_TOKEN=$SECRET" >> "$GITHUB_ENV"
+
+      - name: Agent API eval (MCP surface)
+        run: pnpm --filter trackforge-mcp eval
+        env:
+          TRACKFORGE_URL: http://localhost:3000
+
+      - name: Compat matrix in sync with live OpenAPI — release gate L4
+        run: |
+          pnpm --filter trackforge-mcp exec tsx eval/compat.ts
+          git diff --exit-code -- docs/compatibility.md || {
+            echo "::error::docs/compatibility.md is stale — regenerate: pnpm --filter trackforge-mcp exec tsx eval/compat.ts"
+            exit 1
+          }
+        env:
+          TRACKFORGE_URL: http://localhost:3000
+
+      - name: Perf budgets (016 — 50k fixture)
+        run: |
+          pnpm --filter backend seed:perf
+          pnpm --filter backend perf:check
+        env:
+          TRACKFORGE_URL: http://localhost:3000
+
+      - name: Start frontend
+        run: |
+          cd apps/frontend
+          nohup pnpm dev > /tmp/frontend.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf http://localhost:5173 >/dev/null && break || sleep 1; done
+
+      - name: Playwright smoke
+        run: pnpm --filter frontend test:e2e

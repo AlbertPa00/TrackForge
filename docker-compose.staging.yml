@@ -1,0 +1,15 @@
+# 045 — staging override example. Layer on prod:
+#   docker compose -f docker-compose.prod.yml -f docker-compose.staging.yml up -d
+# Staging = prod-shaped but synthetic data, perf seed, update-check off.
+name: trackforge
+
+services:
+  app:
+    environment:
+      UPDATE_CHECK_ENABLED: "false"
+      LOG_LEVEL: debug
+    ports:
+      - "${HTTP_PORT:-8080}:3000" # non-conflicting port on shared VMs
+    deploy:
+      resources:
+        limits: { memory: 1G }

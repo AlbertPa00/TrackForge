@@ -1,0 +1,2030 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Project {
+  id                         String                      @id @default(uuid())
+  key                        String                      @unique
+  name                       String
+  description                String?
+  projectType                String                      @default("software")
+  issueCounter               Int                         @default(0)
+  leadId                     String?
+  avatarColor                String?
+  workflowId                 String?
+  aiEnabled                  Boolean                     @default(true)
+  agentGuidance              String? // 047 US5 — per-project system-context text for AI calls
+  categoryId                 String?
+  archived                   Boolean                     @default(false)
+  createdAt                  DateTime                    @default(now())
+  updatedAt                  DateTime                    @updatedAt
+  issues                     Issue[]
+  sprints                    Sprint[]
+  boards                     Board[]
+  automationRules            AutomationRule[]
+  events                     DomainEvent[]
+  proposals                  Proposal[]
+  cfContexts                 CustomFieldContextProject[]
+  permissionSchemeId         String?
+  notificationSchemeId       String?
+  issueSecuritySchemeId      String?
+  issueTypeScreenSchemeId    String?
+  fieldConfigurationSchemeId String?
+  issueTypeSchemeId          String?
+  issueSecurityScheme        IssueSecurityScheme?        @relation(fields: [issueSecuritySchemeId], references: [id])
+  issueTypeScreenScheme      IssueTypeScreenScheme?      @relation(fields: [issueTypeScreenSchemeId], references: [id])
+  fieldConfigurationScheme   FieldConfigurationScheme?   @relation(fields: [fieldConfigurationSchemeId], references: [id])
+  issueTypeScheme            IssueTypeScheme?            @relation(fields: [issueTypeSchemeId], references: [id])
+  workflowSchemeId           String?
+  workflowScheme             WorkflowScheme?             @relation(fields: [workflowSchemeId], references: [id])
+  notificationScheme         NotificationScheme?         @relation(fields: [notificationSchemeId], references: [id])
+  lead                       User?                       @relation("ProjectLead", fields: [leadId], references: [id])
+  workflow                   Workflow?                   @relation(fields: [workflowId], references: [id])
+  scheme                     PermissionScheme?           @relation(fields: [permissionSchemeId], references: [id])
+  category                   ProjectCategory?            @relation(fields: [categoryId], references: [id])
+  roleActors                 ProjectRoleActor[]
+  components                 Component[]
+  versions                   Version[]
+
+  @@index([key])
+  @@index([archived])
+}
+
+model Sprint {
+  id           String    @id @default(uuid())
+  projectId    String
+  boardId      String
+  name         String
+  state        String    @default("future")
+  goal         String?
+  startDate    DateTime?
+  endDate      DateTime?
+  completeDate DateTime?
+  sequence     Int       @default(0)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @default(now()) @updatedAt
+
+  project     Project       @relation(fields: [projectId], references: [id])
+  board       Board         @relation(fields: [boardId], references: [id])
+  issues      Issue[]
+  memberships IssueSprint[]
+
+  @@index([projectId, state])
+  @@index([boardId, state])
+}
+
+/// Sprint membership history (013): every add/remove, incl. closed sprints —
+/// the basis for sprint contents, burndown and velocity. `Issue.sprintId`
+/// remains the derived "current open sprint" pointer.
+model IssueSprint {
+  id        String    @id @default(uuid())
+  issueId   String
+  sprintId  String
+  addedAt   DateTime  @default(now())
+  removedAt DateTime?
+
+  issue  Issue  @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  sprint Sprint @relation(fields: [sprintId], references: [id], onDelete: Cascade)
+
+  @@index([sprintId, removedAt])
+  @@index([issueId])
+}
+
+model IssueType {
+  id                   String                @id @default(uuid())
+  name                 String                @unique
+  description          String?
+  hierarchyLevel       Int                   @default(0)
+  isSubtask            Boolean               @default(false)
+  issues               Issue[]
+  screenSchemeMappings ScreenSchemeMapping[]
+  fieldConfigMappings  FieldConfigMapping[]
+  schemeItems          IssueTypeSchemeItem[]
+  workflowSchemeItems  WorkflowSchemeItem[]
+}
+
+model Status {
+  id       String  @id @default(uuid())
+  name     String  @unique
+  category String
+  sequence Int     @default(0)
+  issues   Issue[]
+
+  workflowStatuses    WorkflowStatus[]
+  transitionsFrom     WorkflowTransition[] @relation("TransitionFrom")
+  transitionsTo       WorkflowTransition[] @relation("TransitionTo")
+  boardColumnStatuses BoardColumnStatus[]
+}
+
+model Priority {
+  id       String  @id @default(uuid())
+  name     String  @unique
+  color    String?
+  sequence Int     @default(0)
+  issues   Issue[]
+}
+
+model User {
+  id                 String    @id @default(uuid())
+  email              String    @unique
+  displayName        String
+  passwordHash       String?
+  type               String    @default("human") // human | agent
+  ownerId            String?
+  isAdmin            Boolean   @default(false)
+  active             Boolean   @default(true)
+  timeZone           String    @default("UTC")
+  requireApproval    Boolean   @default(false) // agent writes become proposals — superseded by approvalPolicy (047, drops next release)
+  // 047 US4 — always | destructiveOnly | never. Backfilled from requireApproval
+  // (true→always, false→never); empty string = pre-migration sentinel.
+  approvalPolicy     String    @default("never")
+  isAssignableAgent  Boolean   @default(false) // 047 — appears in the delegate picker
+  lastLoginAt        DateTime? // 032 JQL currentLogin()/lastLogin()
+  // 065 audit A5 — per-account login lockout (failed-password backoff).
+  loginFailures      Int       @default(0)
+  loginLockedUntil   DateTime?
+  previousLoginAt    DateTime? // 032 JQL previousLogin()
+  invitedAt          DateTime? // 061 US2 — pending-invite marker; cleared on accept
+  locale             String    @default("en_US") // 036
+  avatarEmoji        String? // user-chosen avatar glyph; null = deterministic name hash
+  emailVerified      Boolean   @default(false) // 036 — OIDC linking requires verified email
+  dateFormat         String    @default("d/MMM/yy") // 036 — stored; rendered in 037
+  mustChangePassword Boolean   @default(false) // 036
+  totpSecret         String? // 036 — encrypted-at-rest is deployment TODO
+  totpEnabled        Boolean   @default(false)
+  backupCodes        Json? // 036 — hashed one-use codes
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  owner               User?                    @relation("AgentOwner", fields: [ownerId], references: [id])
+  agents              User[]                   @relation("AgentOwner")
+  tokens              ApiToken[]
+  imports             ImportJob[]
+  assigned            Issue[]                  @relation("IssueAssignee")
+  reported            Issue[]                  @relation("IssueReporter")
+  histories           ChangeHistory[]
+  approvedHistories   ChangeHistory[]          @relation("ChangeApprover")
+  audit               AuditEvent[]
+  comments            Comment[]
+  ledProjects         Project[]                @relation("ProjectLead")
+  filters             Filter[]
+  favouriteFilters    FilterFavourite[]
+  preferences         UserPreference[]
+  events              DomainEvent[]            @relation("EventActor")
+  webhooks            Webhook[]                @relation("WebhookCreator")
+  watching            Watcher[]
+  votes               IssueVote[]
+  dashboards          Dashboard[]
+  notifications       Notification[]
+  recentViews         RecentView[]
+  proposals           Proposal[]               @relation("ProposalPrincipal")
+  resolvedProposals   Proposal[]               @relation("ProposalResolver")
+  aiUsage             AiUsage[]
+  promptLogs          AiPromptLog[]
+  groupMemberships    GroupMember[]
+  roleActors          ProjectRoleActor[]
+  worklogs            Worklog[]
+  leadComponents      Component[]              @relation("ComponentLead")
+  attachments         Attachment[]
+  filterSubscriptions FilterSubscription[]
+  emailOutbox         EmailOutbox[]
+  createdBoards       Board[]                  @relation("BoardCreator")
+  rulesActed          AutomationRule[]         @relation("RuleActor")
+  rulesAuthored       AutomationRule[]         @relation("RuleAuthor")
+  sessions            Session[]
+  oidcIdentities      OidcIdentity[]
+  delegated           Issue[]                  @relation("IssueDelegate") // 047
+  agentSessions       AgentSession[]           @relation("SessionAgent")
+  delegatedSessions   AgentSession[]           @relation("SessionDelegator")
+  answeredQuestions   AgentQuestion[]          @relation("QuestionAnswerer")
+  copilotThreads      CopilotThread[] // 068 — workbench threads in the dock
+  passwordResetTokens PasswordResetToken[]
+  externalIdentities  ExternalIdentity[]
+  bulkJobs            BulkJob[]
+  oauthCodes          OAuthAuthorizationCode[]
+  oauthGrants         OAuthGrant[]
+  oauthDeviceCodes    OAuthDeviceCode[]
+  oauthServiceClients OAuthClient[]            @relation("OAuthServiceUser")
+
+  @@index([type, active])
+}
+
+model ApiToken {
+  id              String    @id @default(uuid())
+  userId          String
+  name            String
+  prefix          String
+  hash            String    @unique
+  scopes          String[] // read | write | admin
+  projectKeys     String[] // empty = all projects
+  requireApproval Boolean   @default(false) // writes become proposals — superseded by approvalPolicy (047)
+  approvalPolicy  String    @default("never") // 047 — always | destructiveOnly | never
+  expiresAt       DateTime?
+  lastUsedAt      DateTime?
+  revokedAt       DateTime?
+  createdAt       DateTime  @default(now())
+
+  user        User            @relation(fields: [userId], references: [id])
+  histories   ChangeHistory[]
+  proposals   Proposal[]
+  worklogs    Worklog[]
+  attachments Attachment[]
+}
+
+model ChangeHistory {
+  id           String   @id @default(uuid())
+  issueId      String
+  authorId     String
+  channel      String   @default("api") // ui | api | mcp | copilot
+  tokenId      String?
+  approvedById String? // set when a proposal approval applied this change
+  createdAt    DateTime @default(now())
+
+  issue    Issue        @relation(fields: [issueId], references: [id])
+  author   User         @relation(fields: [authorId], references: [id])
+  approver User?        @relation("ChangeApprover", fields: [approvedById], references: [id])
+  token    ApiToken?    @relation(fields: [tokenId], references: [id])
+  items    ChangeItem[]
+
+  @@index([issueId, createdAt])
+}
+
+model ChangeItem {
+  id         String  @id @default(uuid())
+  historyId  String
+  field      String
+  fieldtype  String  @default("jira")
+  fromVal    String?
+  fromString String?
+  toVal      String?
+  toString   String?
+
+  history ChangeHistory @relation(fields: [historyId], references: [id], onDelete: Cascade)
+}
+
+model AuditEvent {
+  id         String   @id @default(uuid())
+  actorId    String?
+  action     String
+  entityType String
+  entityId   String?
+  details    Json?
+  ip         String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  actor User? @relation(fields: [actorId], references: [id])
+
+  @@index([createdAt])
+  @@index([entityType, entityId])
+}
+
+model IdempotencyRecord {
+  id           String   @id @default(uuid())
+  principalId  String // user.id (or token id) that owns the key
+  key          String
+  method       String
+  path         String
+  requestHash  String
+  status       Int
+  responseBody String?
+  createdAt    DateTime @default(now())
+
+  @@unique([principalId, key])
+  @@index([createdAt])
+}
+
+// 065 audit F4 — single-use, expiring two-step confirm tokens (delete,
+// anonymize, restore, project delete). The raw token is returned once to the
+// preview caller; only its sha256 is stored. Consumption is an atomic
+// usedAt-claim so a token cannot be replayed, even concurrently.
+model ConfirmToken {
+  id        String    @id @default(uuid())
+  tokenHash String    @unique
+  kind      String // 'delete' | 'anonymize' | 'restore' | 'project-delete' | …
+  subject   String // what the token authorises (ids/params — mismatch rejects)
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([expiresAt])
+}
+
+model Issue {
+  id                   String                 @id @default(uuid())
+  projectId            String
+  issueNumber          Int
+  summary              String
+  description          String?
+  issueTypeId          String
+  statusId             String
+  priorityId           String
+  assigneeId           String?
+  reporterId           String?
+  sprintId             String?
+  labels               String[]
+  dueDate              DateTime?
+  resolutionId         String?
+  resolutionDate       DateTime?
+  parentId             String?
+  rank                 String                 @default("")
+  /// Story points (013/D19): system-managed CF storage — access via the field
+  /// accessor only; sprint 014 registers it in the field registry.
+  storyPoints          Float?
+  /// Sprint 024: Jira timetracking — seconds columns; timeSpent is derived
+  /// from Worklog rows (never stored).
+  originalEstimateSec  Int?
+  remainingEstimateSec Int?
+  /// Sprint 022: Jira system field — free-text environment.
+  environment          String?
+  /// Sprint 031: Jira security level — effective level = own ?? parent's (subtasks inherit).
+  securityLevelId      String?
+  // Denormalized effective level (own ?? parent's) — keeps the visibility
+  // predicate join-free at the query layer (031 perf).
+  effSecurityLevelId   String?
+  // 032 US3 — denormalized counts for JQL `votes`/`watches` comparisons
+  voteCount            Int                    @default(0)
+  watcherCount         Int                    @default(0)
+  // 033 — last status-change timestamp (board days-in-column indicator)
+  statusChangedAt      DateTime?
+  // 047 US1 — delegate (agent works it, assignee stays accountable). Registry
+  // field `delegate` rides 014 for createmeta/editmeta/JQL/importer free.
+  delegateId           String?
+  // 060 US7 — Jira DC issue archiving: read-only, hidden from every read
+  // surface via the visibleIssuesWhere predicate; restore via /restore.
+  archived             Boolean                @default(false)
+  archivedAt           DateTime?
+  archivedById         String?
+  devItems             DevelopmentItemIssue[]
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+
+  project          Project                  @relation(fields: [projectId], references: [id])
+  issueType        IssueType                @relation(fields: [issueTypeId], references: [id])
+  status           Status                   @relation(fields: [statusId], references: [id])
+  priority         Priority                 @relation(fields: [priorityId], references: [id])
+  sprint           Sprint?                  @relation(fields: [sprintId], references: [id])
+  assignee         User?                    @relation("IssueAssignee", fields: [assigneeId], references: [id])
+  delegate         User?                    @relation("IssueDelegate", fields: [delegateId], references: [id])
+  reporter         User?                    @relation("IssueReporter", fields: [reporterId], references: [id])
+  resolution       Resolution?              @relation(fields: [resolutionId], references: [id])
+  parent           Issue?                   @relation("IssueHierarchy", fields: [parentId], references: [id])
+  children         Issue[]                  @relation("IssueHierarchy")
+  histories        ChangeHistory[]
+  comments         Comment[]
+  outLinks         IssueLink[]              @relation("LinkOutward")
+  inLinks          IssueLink[]              @relation("LinkInward")
+  watchers         Watcher[]
+  notifications    Notification[]
+  recentViews      RecentView[]
+  proposals        Proposal[]
+  embedding        IssueEmbedding?
+  agentSessions    AgentSession[]
+  agentQuestions   AgentQuestion[]
+  sprints          IssueSprint[]
+  cfValues         CustomFieldValue[]
+  worklogs         Worklog[]
+  components       IssueComponent[]
+  versionRefs      IssueVersion[]
+  attachments      Attachment[]
+  securityLevel    SecurityLevel?           @relation(fields: [securityLevelId], references: [id])
+  effSecurityLevel SecurityLevel?           @relation("EffSecurityLevel", fields: [effSecurityLevelId], references: [id], onDelete: SetNull)
+  votes            IssueVote[]
+  remoteLinks      RemoteIssueLink[]
+  keyAliases       IssueKeyAlias[]
+  /// FTS column — generated + GIN-indexed in migration 20261107140018_filters_fts.
+  /// Declared here so prisma diff stops proposing to drop it; app writes via SQL.
+  searchVector     Unsupported("tsvector")?
+
+  @@unique([projectId, issueNumber])
+  @@index([searchVector], type: Gin)
+  @@index([projectId])
+  @@index([projectId, rank])
+  @@index([assigneeId])
+  @@index([parentId])
+  @@index([effSecurityLevelId])
+  // JQL hot columns — the compiler emits where/orderBy on all of these
+  @@index([statusId])
+  @@index([securityLevelId])
+  @@index([issueTypeId])
+  @@index([priorityId])
+  @@index([reporterId])
+  @@index([sprintId])
+  @@index([delegateId])
+  @@index([archived])
+  @@index([resolutionId])
+  @@index([dueDate])
+  @@index([updatedAt])
+  @@index([labels(ops: ArrayOps)], type: Gin)
+}
+
+model Resolution {
+  id          String  @id @default(uuid())
+  name        String  @unique
+  description String?
+  sequence    Int     @default(0)
+  issues      Issue[]
+}
+
+model Comment {
+  id         String   @id @default(uuid())
+  issueId    String
+  authorId   String
+  body       String
+  channel    String   @default("api") // ui | api | mcp | copilot
+  // 031: Jira visibility restriction — {type:'role'|'group', value:string}
+  visibility Json?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  issue        Issue                    @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  author       User                     @relation(fields: [authorId], references: [id])
+  /// FTS column — generated + GIN-indexed in migration 20261107140018_filters_fts.
+  searchVector Unsupported("tsvector")?
+
+  @@index([issueId, createdAt])
+  @@index([searchVector], type: Gin)
+}
+
+model IssueLinkType {
+  id      String      @id @default(uuid())
+  name    String      @unique // Blocks, Relates, Duplicate, Cloners
+  inward  String // "is blocked by"
+  outward String // "blocks"
+  links   IssueLink[]
+}
+
+model IssueLink {
+  id        String @id @default(uuid())
+  typeId    String
+  outwardId String
+  inwardId  String
+
+  type         IssueLinkType @relation(fields: [typeId], references: [id])
+  outwardIssue Issue         @relation("LinkOutward", fields: [outwardId], references: [id], onDelete: Cascade)
+  inwardIssue  Issue         @relation("LinkInward", fields: [inwardId], references: [id], onDelete: Cascade)
+
+  @@unique([typeId, outwardId, inwardId])
+  // 070 — ready()/claim anti-join filters on inwardId; the unique index leads
+  // with typeId and can't serve it.
+  @@index([inwardId])
+}
+
+model Workflow {
+  id                    String               @id @default(uuid())
+  name                  String               @unique
+  version               Int                  @default(1)
+  projects              Project[]
+  statuses              WorkflowStatus[]
+  transitions           WorkflowTransition[]
+  schemeItems           WorkflowSchemeItem[]
+  schemesUsingAsDefault WorkflowScheme[]     @relation("SchemeDefaultWorkflow")
+}
+
+model WorkflowStatus {
+  id         String  @id @default(uuid())
+  workflowId String
+  statusId   String
+  isInitial  Boolean @default(false)
+  position   Int     @default(0)
+
+  workflow Workflow @relation(fields: [workflowId], references: [id])
+  status   Status   @relation(fields: [statusId], references: [id])
+
+  @@unique([workflowId, statusId])
+}
+
+model WorkflowTransition {
+  id           String   @id @default(uuid())
+  workflowId   String
+  name         String
+  fromStatusId String? // null = global (valid from any status)
+  toStatusId   String
+  screenFields String[] // resolution | comment | assignee
+  position     Int      @default(0)
+
+  workflow   Workflow         @relation(fields: [workflowId], references: [id])
+  fromStatus Status?          @relation("TransitionFrom", fields: [fromStatusId], references: [id])
+  toStatus   Status           @relation("TransitionTo", fields: [toStatusId], references: [id])
+  rules      TransitionRule[]
+
+  @@index([workflowId, fromStatusId])
+}
+
+model TransitionRule {
+  id           String @id @default(uuid())
+  transitionId String
+  kind         String // condition | validator | postFunction
+  type         String
+  config       Json?
+
+  transition WorkflowTransition @relation(fields: [transitionId], references: [id], onDelete: Cascade)
+}
+
+model Filter {
+  id          String   @id @default(uuid())
+  ownerId     String
+  name        String
+  description String?
+  jql         String
+  visibility  String   @default("private") // private | all — derived: 'all' iff a global/authenticated sharePerm row exists
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  owner         User                    @relation(fields: [ownerId], references: [id])
+  favourites    FilterFavourite[]
+  subscriptions FilterSubscription[]
+  sharePerms    FilterSharePermission[]
+  boards        Board[]
+
+  @@index([ownerId])
+}
+
+/// 032 US4 — Jira /filter/{id}/permission rows. type ∈
+/// global | authenticated | group | project | projectrole | user.
+/// target/target2 mirror DashboardPermission storage:
+///   group → target=group name
+///   project → target=project id
+///   projectrole → target=role id, target2=project id
+///   user → target=user id
+model FilterSharePermission {
+  id       String  @id @default(uuid())
+  filterId String
+  type     String
+  target   String?
+  target2  String?
+
+  filter Filter @relation(fields: [filterId], references: [id], onDelete: Cascade)
+
+  @@index([filterId])
+}
+
+model FilterFavourite {
+  id       String @id @default(uuid())
+  filterId String
+  userId   String
+
+  filter Filter @relation(fields: [filterId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id])
+
+  @@unique([filterId, userId])
+}
+
+model UserPreference {
+  id     String @id @default(uuid())
+  userId String
+  key    String
+  value  Json
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, key])
+}
+
+model Board {
+  id         String   @id @default(uuid())
+  name       String
+  type       String   @default("kanban") // kanban | scrum
+  projectId  String // 033 — N:1 per project; exactly one isDefault
+  isDefault  Boolean  @default(false)
+  filter     String? // legacy direct-JQL text (pre-filterId)
+  filterId   String? // saved filter — Jira board.location model
+  cardConfig Json? // 033 — colors/indicators/daysInColumn/statistics/swimlaneBy/hideDone
+  createdBy  String?
+  createdAt  DateTime @default(now())
+
+  project      Project            @relation(fields: [projectId], references: [id])
+  columns      BoardColumn[]
+  sprints      Sprint[]
+  quickFilters BoardQuickFilter[]
+  savedFilter  Filter?            @relation(fields: [filterId], references: [id], onDelete: SetNull)
+  creator      User?              @relation("BoardCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@index([projectId, isDefault])
+}
+
+/// 033 — Jira board quick filters: named JQL toggles composed (AND) onto the
+/// board's effective filter at read time.
+model BoardQuickFilter {
+  id       String @id @default(uuid())
+  boardId  String
+  name     String
+  jql      String
+  position Int    @default(0)
+
+  board Board @relation(fields: [boardId], references: [id], onDelete: Cascade)
+
+  @@index([boardId])
+}
+
+model BoardColumn {
+  id        String @id @default(uuid())
+  boardId   String
+  name      String
+  position  Int
+  minIssues Int?
+  maxIssues Int?
+
+  board    Board               @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  statuses BoardColumnStatus[]
+}
+
+model BoardColumnStatus {
+  id       String @id @default(uuid())
+  columnId String
+  statusId String
+
+  column BoardColumn @relation(fields: [columnId], references: [id], onDelete: Cascade)
+  status Status      @relation(fields: [statusId], references: [id])
+
+  @@unique([columnId, statusId])
+}
+
+// ---------- Sprint 011: events, webhooks, watchers, notifications ----------
+
+/// Transactional outbox — every mutation writes one row in the same tx.
+model DomainEvent {
+  id           BigInt    @id @default(autoincrement())
+  type         String // jira:issue_created | jira:issue_updated | jira:issue_deleted | comment_created|updated|deleted | issuelink_created|deleted | board_configuration_changed | sprint_*
+  occurredAt   DateTime  @default(now())
+  actorId      String?
+  channel      String    @default("api") // ui | api | mcp | copilot
+  projectId    String?
+  issueId      String? // dangling after issue delete — payload carries the snapshot
+  payload      Json // { issueKey, projectKey, changelog: {items}, issue: snapshot, extra… }
+  dispatchedAt DateTime?
+
+  actor          User?             @relation("EventActor", fields: [actorId], references: [id])
+  project        Project?          @relation(fields: [projectId], references: [id])
+  deliveries     WebhookDelivery[]
+  notifications  Notification[]
+  emails         EmailOutbox[]
+  automationRuns AutomationRun[]
+
+  @@index([dispatchedAt, id])
+  @@index([occurredAt])
+  @@index([projectId, id])
+  @@index([issueId, id])
+}
+
+model Webhook {
+  id              String   @id @default(uuid())
+  name            String
+  url             String
+  events          String[] // webhookEvent names
+  jqlFilter       String?
+  secret          String? // AES-256-GCM at rest (065 F3); readSecret() handles legacy plaintext rows
+  enabled         Boolean  @default(true)
+  failureCount    Int      @default(0)
+  excludeActorIds String[] @default([]) // loop guard: skip events by these actors
+  createdById     String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  createdBy  User?             @relation("WebhookCreator", fields: [createdById], references: [id])
+  deliveries WebhookDelivery[]
+
+  @@index([enabled])
+}
+
+model WebhookDelivery {
+  id              String   @id @default(uuid())
+  webhookId       String
+  eventId         BigInt
+  attempt         Int      @default(0)
+  status          String   @default("pending") // pending | success | failed | dead
+  responseCode    Int?
+  latencyMs       Int?
+  responseSnippet String?
+  error           String?
+  nextAttemptAt   DateTime @default(now())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  webhook Webhook     @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+  event   DomainEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([status, nextAttemptAt])
+  @@index([webhookId, createdAt])
+}
+
+model Watcher {
+  id      String @id @default(uuid())
+  issueId String
+  userId  String
+
+  issue Issue @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id])
+
+  @@unique([issueId, userId])
+  @@index([userId])
+}
+
+model Notification {
+  id        String    @id @default(uuid())
+  userId    String
+  eventId   BigInt
+  issueId   String?
+  reason    String // assigned | mentioned | watching
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user  User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  event DomainEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  issue Issue?      @relation(fields: [issueId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, eventId, reason])
+  @@index([userId, readAt, createdAt])
+}
+
+model RecentView {
+  id       String   @id @default(uuid())
+  userId   String
+  issueId  String
+  viewedAt DateTime @default(now())
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  issue Issue @relation(fields: [issueId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, issueId])
+  @@index([userId, viewedAt])
+}
+
+// ---------- Sprint 012: AI copilot, approvals, embeddings ----------
+
+/// Singleton row — AI is off by default; endpoints 404 until configured.
+model AiSettings {
+  id             String   @id @default("singleton")
+  provider       String   @default("openai") // openai-compatible (also Ollama/vLLM) | anthropic
+  baseUrl        String   @default("")
+  chatModel      String   @default("")
+  embedModel     String   @default("")
+  speechModel    String   @default("") // OpenAI-compatible /audio/transcriptions model (whisper-1, faster-whisper)
+  apiKeyEnc      String? // AES-256-GCM; never returned by the API
+  dailyLimit     Int      @default(0) // per-user AI requests/day, 0 = unlimited
+  monthlyBudget  BigInt   @default(0) // global tokens/month, 0 = unlimited
+  promptLogging  Boolean  @default(false)
+  globalGuidance String? // 047 US5 — system-context text for every AI call
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model AiUsage {
+  id           String   @id @default(uuid())
+  userId       String
+  day          DateTime @db.Date
+  requests     Int      @default(0)
+  inputTokens  Int      @default(0)
+  outputTokens Int      @default(0)
+  costUsd      Float    @default(0) // provider-reported USD (e.g. OpenRouter usage.cost); 0 when unreported
+  outcome      Json? // 047 US5-4 — {accepted,edited,discarded} per feature
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, day])
+  @@index([day])
+}
+
+model AiPromptLog {
+  id        String   @id @default(uuid())
+  userId    String
+  feature   String // plan | jql | summary | draft | breakdown | embed | test
+  prompt    String // secrets/tokens redacted before write
+  response  String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([createdAt])
+  @@index([feature])
+}
+
+/// 068 — copilot workbench thread: private to the user, lazy-swept after 30d
+/// idle. Turns carry verbatim entity refs so follow-ups ("assign those three")
+/// resolve without re-searching. Execution authority stays with the in-memory
+/// planStore (10-min planId TTL) — turns are a record, not a permission.
+model CopilotThread {
+  id        String   @id @default(uuid())
+  userId    String
+  title     String? // first instruction, truncated
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user  User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  turns CopilotTurn[]
+
+  @@index([userId, updatedAt])
+}
+
+model CopilotTurn {
+  id            String   @id @default(uuid())
+  threadId      String
+  index         Int
+  instruction   String
+  answer        String? // grounded markdown reply (or clarify question text)
+  entities      Json? // {issueKeys:[], users:[{accountId,displayName}], createdKeys:[], plannedWrites:[{tool,title}]}
+  writesApplied Json? // [{tool,target,status}] — filled by execute; record, not authority
+  outcome       String? // answered | planned | clarified | applied | partial | discarded | failed
+  createdAt     DateTime @default(now())
+
+  thread CopilotThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  @@unique([threadId, index])
+  @@index([threadId, createdAt])
+}
+
+/// Approval-mode write: validated request parked until a human resolves it.
+model Proposal {
+  id               String    @id @default(uuid())
+  principalId      String // the agent (user) that attempted the write
+  tokenId          String?
+  projectId        String?
+  issueId          String?
+  method           String
+  path             String
+  body             Json
+  channel          String    @default("api") // principal's channel — replayed verbatim
+  diff             Json? // dry-run preview when available
+  rationale        String?
+  editedBody       Json? // 047 US4 — approver-edited args (re-validated before apply)
+  appliedWithEdits Boolean   @default(false) // 047 — changelog attribution
+  timeToApproveSec Int? // 047 US5-4 — verification-cost metric
+  status           String    @default("pending") // pending | approved | rejected | expired | failed
+  resolvedById     String?
+  resolvedAt       DateTime?
+  reason           String?
+  result           Json? // applied response or error on approve
+  expiresAt        DateTime
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  principal  User      @relation("ProposalPrincipal", fields: [principalId], references: [id])
+  token      ApiToken? @relation(fields: [tokenId], references: [id])
+  project    Project?  @relation(fields: [projectId], references: [id])
+  issue      Issue?    @relation(fields: [issueId], references: [id], onDelete: SetNull)
+  resolvedBy User?     @relation("ProposalResolver", fields: [resolvedById], references: [id])
+
+  @@index([status, createdAt])
+  @@index([principalId, status])
+  @@index([projectId, status])
+}
+
+// ---------- 047 — agent sessions + question interrupts ----------
+
+/// A delegated agent task — visible work-in-progress, never a black box.
+/// Activities are the agent's own reports ({at,type,text}); status drives the
+/// issue chip. Lifecycle mirrors AutomationRun/Proposal.
+model AgentSession {
+  id             String    @id @default(uuid())
+  issueId        String
+  agentUserId    String
+  delegatorId    String?
+  trigger        String    @default("delegate") // delegate | mention | rule | manual
+  status         String    @default("running") // running | blocked | needs-answer | done | failed
+  lastActivityAt DateTime  @default(now())
+  startedAt      DateTime  @default(now())
+  finishedAt     DateTime?
+
+  issue     Issue           @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  agent     User            @relation("SessionAgent", fields: [agentUserId], references: [id])
+  delegator User?           @relation("SessionDelegator", fields: [delegatorId], references: [id])
+  questions AgentQuestion[]
+  activities AgentActivity[]
+
+  @@index([issueId, status])
+  @@index([agentUserId, status])
+}
+
+/// 070 — append-only activity stream (was a `Json` column on AgentSession:
+/// every emit re-read and re-wrote the whole array, O(n²) bytes and racy
+/// under concurrent emits). BigInt id doubles as the order key.
+model AgentActivity {
+  id        BigInt   @id @default(autoincrement())
+  sessionId String
+  type      String   // thought | action | error
+  text      String
+  byName    String
+  createdAt DateTime @default(now())
+
+  session AgentSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, id])
+}
+
+/// The "question" interrupt mode — agent blocked mid-task asks the human;
+/// answered via comment/inbox; expiry fails the session (no silent hang).
+model AgentQuestion {
+  id           String    @id @default(uuid())
+  sessionId    String
+  issueId      String
+  question     String
+  options      Json? // suggested answers
+  status       String    @default("open") // open | answered | expired
+  answer       String?
+  answeredById String?
+  expiresAt    DateTime?
+  createdAt    DateTime  @default(now())
+  answeredAt   DateTime?
+
+  session    AgentSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  issue      Issue        @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  answeredBy User?        @relation("QuestionAnswerer", fields: [answeredById], references: [id])
+
+  @@index([sessionId, status])
+  @@index([issueId, status])
+}
+
+/// pgvector isn't packaged with this Postgres build — vectors are stored as
+/// float8[] and cosine similarity runs in-process (fine at self-hosted scale;
+/// platform sprint 016 can flip to a native column + index).
+model IssueEmbedding {
+  issueId   String   @id
+  model     String
+  vector    Float[]
+  updatedAt DateTime @updatedAt
+
+  issue Issue @relation(fields: [issueId], references: [id], onDelete: Cascade)
+}
+
+// ---------- Sprint 014: custom fields ----------
+
+/// Registry-backed custom field (D19). `systemManaged` fields (Story Points,
+/// Flagged, Start date) have stable `alias` ids; Story Points reads/writes the
+/// Issue.storyPoints column via adapter — never CustomFieldValue.
+model CustomField {
+  id            String   @id // "customfield_10000"
+  seq           Int      @unique
+  name          String   @unique
+  type          String // text|textarea|number|date|datetime|select|multiselect|cascading|user|url|checkbox|radio|checklist
+  searcherType  String // text|exact|number|date|user|none — drives JQL operators
+  description   String?
+  active        Boolean  @default(true) // soft-delete keeps values for audit
+  systemManaged Boolean  @default(false)
+  alias         String?  @unique // story_points | flagged | startdate
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  contexts CustomFieldContext[]
+  values   CustomFieldValue[]
+
+  @@index([active])
+}
+
+/// Which projects a field applies to, with a global fallback. A CF is visible
+/// in a project only when a global context exists or a context lists it.
+model CustomFieldContext {
+  id       String  @id @default(uuid())
+  fieldId  String
+  isGlobal Boolean @default(false)
+
+  field    CustomField                 @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+  projects CustomFieldContextProject[]
+  options  CustomFieldOption[]
+
+  @@index([fieldId])
+}
+
+model CustomFieldContextProject {
+  contextId String
+  projectId String
+
+  context CustomFieldContext @relation(fields: [contextId], references: [id], onDelete: Cascade)
+  project Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@id([contextId, projectId])
+}
+
+model CustomFieldOption {
+  id        String  @id @default(uuid())
+  contextId String
+  value     String
+  parentId  String? // cascading-select child
+  position  Int     @default(0)
+  disabled  Boolean @default(false)
+
+  context  CustomFieldContext  @relation(fields: [contextId], references: [id], onDelete: Cascade)
+  parent   CustomFieldOption?  @relation("OptionChildren", fields: [parentId], references: [id])
+  children CustomFieldOption[] @relation("OptionChildren")
+
+  @@index([contextId, position])
+}
+
+/// Per-issue CF values. `value` is per-type JSON: text/url → string,
+/// number → number, date/datetime → ISO string, select/radio → optionId,
+/// multi → [optionId], cascading → {parent, child}, user → accountId,
+/// checklist → {items:[{text,done}]}.
+model CustomFieldValue {
+  issueId String
+  fieldId String
+  value   Json
+
+  issue Issue       @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  field CustomField @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+
+  @@id([issueId, fieldId])
+  @@index([fieldId])
+  @@index([value], type: Gin) // JQL multiselect `array_contains` (@>)
+}
+
+/// Sprint 015 — Permissions Core: groups, project roles, permission schemes.
+model Group {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  requireTotp Boolean  @default(false) // 036 — members must enroll 2FA
+  createdAt   DateTime @default(now())
+
+  members    GroupMember[]
+  roleActors ProjectRoleActor[]
+}
+
+model GroupMember {
+  groupId String
+  userId  String
+
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([groupId, userId])
+  @@index([userId])
+}
+
+model ProjectRole {
+  id          String @id @default(uuid())
+  name        String @unique
+  description String @default("")
+
+  actors ProjectRoleActor[]
+}
+
+/// A user or group granted a project role in one project.
+model ProjectRoleActor {
+  id        String  @id @default(uuid())
+  roleId    String
+  projectId String
+  userId    String?
+  groupId   String?
+
+  role    ProjectRole @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  project Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User?       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  group   Group?      @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, roleId])
+  @@index([userId])
+  @@index([groupId])
+}
+
+model PermissionScheme {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String   @default("")
+  updatedAt   DateTime @default(now()) @updatedAt
+
+  grants   PermissionGrant[]
+  projects Project[]
+}
+
+/// One grant: `permission` → a holder. holderType:
+/// applicationRole (any logged-in user) | user (param=userId) |
+/// group (param=group name) | projectRole (param=roleId) |
+/// projectLead | reporter | assignee.
+model PermissionGrant {
+  id          String  @id @default(uuid())
+  schemeId    String
+  permission  String
+  holderType  String
+  holderParam String?
+
+  scheme PermissionScheme @relation(fields: [schemeId], references: [id], onDelete: Cascade)
+
+  @@index([schemeId, permission])
+}
+
+/// Sprint 017 — Jira Cloud importer. Staged, resumable job.
+model ImportJob {
+  id          String   @id @default(uuid())
+  source      String // jira-cloud (later: jira-server-xml, csv)
+  baseUrl     String
+  projectKeys String[] // allow-list of Jira project keys
+  stage       String   @default("discovering") // discovering|mapping|planned|importing|verifying|done|failed|cancelled
+  stageData   Json? // per-stage progress: {entity: {total, done}}
+  report      Json? // dry-run + validation report
+  error       String?
+  actorId     String
+  dryRun      Boolean  @default(false)
+  lastRunAt   DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  actor  User            @relation(fields: [actorId], references: [id])
+  idMaps ExternalIdMap[]
+
+  @@index([stage])
+}
+
+/// Jira id ↔ TrackForge id for every imported row — resume, delta runs, provenance.
+model ExternalIdMap {
+  id          String @id @default(uuid())
+  importJobId String
+  entityType  String // user|group|role|project|issueType|status|priority|resolution|workflow|customField|cfOption|issue|comment|issueLink|watcher|sprint|board|filter
+  externalId  String // Jira-side id (accountId, numeric id, key)
+  internalId  String // TrackForge id
+
+  importJob ImportJob @relation(fields: [importJobId], references: [id], onDelete: Cascade)
+
+  @@unique([importJobId, entityType, externalId])
+  @@index([importJobId, entityType])
+}
+
+// ---------- Sprint 024: time tracking & worklogs ----------
+
+/// A logged-work record (Jira `worklog`). `timeSpentSec` is the only source
+/// of "time spent" — issue aggregate fields are computed at read time.
+model Worklog {
+  id           String   @id @default(uuid())
+  issueId      String
+  authorId     String
+  timeSpentSec Int
+  started      DateTime
+  comment      String?
+  billable     Boolean  @default(false) // Tempo-style flag (024 FR)
+  // 031: Jira visibility restriction — {type:'role'|'group', value:string}
+  visibility   Json?
+  channel      String   @default("api") // ui | api | mcp | copilot | import
+  tokenId      String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  issue  Issue     @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  author User      @relation(fields: [authorId], references: [id])
+  token  ApiToken? @relation(fields: [tokenId], references: [id])
+
+  @@index([issueId, started])
+  @@index([authorId, started])
+  @@index([updatedAt])
+}
+
+/// Tombstone for Jira `GET /worklog/deleted` incremental sync — the original
+/// worklog id is kept as the primary key. `issueId` is dangling by design:
+/// the tombstone must outlive issue deletion.
+model DeletedWorklog {
+  worklogId String   @id
+  issueId   String
+  deletedAt DateTime @default(now())
+
+  @@index([deletedAt])
+}
+
+/// Global key/value config — time-tracking settings (024) and instance module
+/// toggles (021). Rows are seeded lazily; absent key = documented default.
+model SystemSetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+}
+
+/// 021 — project grouping (Jira projectCategory).
+model ProjectCategory {
+  id          String    @id @default(uuid())
+  name        String    @unique
+  description String?
+  projects    Project[]
+}
+
+/// 019 — Jira component: project sub-area with optional lead + default assignee.
+/// `assigneeType`: PROJECT_DEFAULT | COMPONENT_LEAD | PROJECT_LEAD | UNASSIGNED.
+model Component {
+  id           String   @id @default(uuid())
+  projectId    String
+  name         String
+  description  String?
+  leadId       String?
+  assigneeType String   @default("PROJECT_DEFAULT")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @default(now()) @updatedAt
+
+  project Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  lead    User?            @relation("ComponentLead", fields: [leadId], references: [id])
+  issues  IssueComponent[]
+
+  @@unique([projectId, name])
+  @@index([projectId])
+}
+
+/// 019 — Jira version (release). `sequence` is the explicit order the
+/// `/version/{id}/move` endpoint mutates; released/archived drive pickers.
+model Version {
+  id          String    @id @default(uuid())
+  projectId   String
+  name        String
+  description String?
+  released    Boolean   @default(false)
+  archived    Boolean   @default(false)
+  startDate   DateTime?
+  releaseDate DateTime?
+  sequence    Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @default(now()) @updatedAt
+
+  project Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  issues  IssueVersion[]
+
+  @@unique([projectId, name])
+  @@index([projectId, sequence])
+}
+
+/// 019 — join: issue ↔ component.
+model IssueComponent {
+  issueId     String
+  componentId String
+
+  issue     Issue     @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  component Component @relation(fields: [componentId], references: [id], onDelete: Cascade)
+
+  @@id([issueId, componentId])
+  @@index([componentId])
+}
+
+/// 019 — join: issue ↔ version; `kind` is 'fix' (fixVersions) or 'affects'
+/// (affectsVersions) — an issue may hold the same version under both kinds.
+model IssueVersion {
+  issueId   String
+  versionId String
+  kind      String
+
+  issue   Issue   @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  version Version @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  @@id([issueId, versionId, kind])
+  @@index([versionId, kind])
+}
+
+// ---------- Sprint 018: attachments ----------
+
+model Attachment {
+  id          String   @id @default(uuid())
+  issueId     String
+  filename    String
+  mime        String
+  sniffedMime String?
+  size        Int
+  storagePath String
+  thumbPath   String?
+  authorId    String
+  channel     String   @default("ui")
+  tokenId     String?
+  createdAt   DateTime @default(now())
+
+  issue  Issue     @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  author User      @relation(fields: [authorId], references: [id])
+  token  ApiToken? @relation(fields: [tokenId], references: [id], onDelete: SetNull)
+
+  @@index([issueId])
+}
+
+model IssueVote {
+  id        String   @id @default(uuid())
+  issueId   String
+  userId    String
+  createdAt DateTime @default(now())
+
+  issue Issue @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id])
+
+  @@unique([issueId, userId])
+  @@index([issueId])
+}
+
+model RemoteIssueLink {
+  id        String   @id @default(uuid())
+  issueId   String
+  globalId  String?
+  url       String
+  title     String
+  summary   String?
+  iconUrl   String?
+  createdAt DateTime @default(now())
+
+  issue Issue @relation(fields: [issueId], references: [id], onDelete: Cascade)
+
+  @@index([issueId])
+}
+
+model IssueKeyAlias {
+  id        String   @id @default(uuid())
+  oldKey    String   @unique
+  issueId   String // NOT unique: an issue moved twice needs one alias per old key
+  createdAt DateTime @default(now())
+
+  issue Issue @relation(fields: [issueId], references: [id], onDelete: Cascade)
+
+  @@index([issueId])
+}
+
+model BulkJob {
+  id         String    @id @default(uuid())
+  actorId    String
+  op         String // edit|transition|move|delete|comment|watch|link
+  selection  Json
+  payload    Json
+  status     String    @default("planned") // planned|queued|running|done|failed
+  total      Int       @default(0)
+  done       Int       @default(0)
+  succeeded  Int       @default(0)
+  failed     Int       @default(0)
+  results    Json      @default("[]")
+  createdAt  DateTime  @default(now())
+  finishedAt DateTime?
+
+  actor User @relation(fields: [actorId], references: [id])
+
+  @@index([actorId, createdAt])
+}
+
+/// 026 — Jira dashboard: owner + share/edit permission rows + gadgets.
+model Dashboard {
+  id              String   @id @default(uuid())
+  ownerId         String
+  name            String
+  description     String?
+  isSystemDefault Boolean  @default(false)
+  layout          Json     @default("{\"columns\":2}")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  owner       User                  @relation(fields: [ownerId], references: [id])
+  gadgets     DashboardGadget[]
+  permissions DashboardPermission[]
+}
+
+model DashboardGadget {
+  id          String @id @default(uuid())
+  dashboardId String
+  type        String
+  config      Json   @default("{}")
+  position    Int    @default(0)
+  column      Int    @default(0)
+
+  dashboard Dashboard @relation(fields: [dashboardId], references: [id], onDelete: Cascade)
+
+  @@index([dashboardId])
+}
+
+/// kind: view|edit. type: global|loggedin|group|project|project-role|user.
+/// target: group name | project key | accountId | role id; target2: project key (project-role).
+model DashboardPermission {
+  id          String  @id @default(uuid())
+  dashboardId String
+  kind        String
+  type        String
+  target      String?
+  target2     String?
+
+  dashboard Dashboard @relation(fields: [dashboardId], references: [id], onDelete: Cascade)
+
+  @@index([dashboardId])
+}
+
+// ---------- Sprint 029: email & notification schemes ----------
+
+/// Jira notification scheme — event → recipients → channel. Assigned per
+/// project; when a project has none the seeded default applies.
+model NotificationScheme {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  isDefault   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  entries  NotificationSchemeEntry[]
+  projects Project[]
+}
+
+/// recipientKind: reporter|assignee|watchers|mentioned|projectlead|projectrole|group|user
+/// recipientRef: roleId | group name | userId — null for self kinds.
+model NotificationSchemeEntry {
+  id            String  @id @default(uuid())
+  schemeId      String
+  event         String // issue_created|issue_updated|issue_deleted|issue_assigned|comment_created|work_logged|sprint_event|version_event|mentioned|generic
+  channel       String  @default("email") // email|inapp
+  recipientKind String
+  recipientRef  String?
+
+  scheme NotificationScheme @relation(fields: [schemeId], references: [id], onDelete: Cascade)
+
+  @@index([schemeId, event])
+}
+
+/// FR-001: every send attempt flows through the outbox — durable + inspectable.
+model EmailOutbox {
+  id        String    @id @default(uuid())
+  toUserId  String?
+  toEmail   String
+  subject   String
+  body      String
+  eventId   BigInt?
+  eventType String?
+  issueKey  String?
+  status    String    @default("pending") // pending|sent|failed|skipped|digest
+  attempts  Int       @default(0)
+  error     String?
+  createdAt DateTime  @default(now())
+  sentAt    DateTime?
+
+  toUser User?        @relation(fields: [toUserId], references: [id], onDelete: SetNull)
+  event  DomainEvent? @relation(fields: [eventId], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+}
+
+/// Jira filter subscription — scheduled email of filter results.
+model FilterSubscription {
+  id               String    @id @default(uuid())
+  filterId         String
+  userId           String
+  frequency        String // daily|weekly
+  dayOfWeek        Int? // 0-6 for weekly
+  hour             Int       @default(9)
+  unsubscribeToken String    @unique
+  lastRunAt        DateTime?
+  createdAt        DateTime  @default(now())
+
+  filter Filter @relation(fields: [filterId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// ---------- Sprint 031: issue security schemes & levels ----------
+
+/// Jira issue-security scheme — a project gets levels like "Developers only";
+/// issues stamped with a level are visible only to level members.
+model IssueSecurityScheme {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  levels   SecurityLevel[]
+  projects Project[]
+}
+
+model SecurityLevel {
+  id          String  @id @default(uuid())
+  schemeId    String
+  name        String
+  description String?
+  isDefault   Boolean @default(false) // applied when create/edit passes no level and scheme has a default
+
+  scheme    IssueSecurityScheme   @relation(fields: [schemeId], references: [id], onDelete: Cascade)
+  members   SecurityLevelMember[]
+  issues    Issue[]
+  effIssues Issue[]               @relation("EffSecurityLevel")
+
+  @@index([schemeId])
+}
+
+/// kind: user|group|projectrole|reporter|assignee|projectlead.
+/// ref: userId | group name | roleId — null for the dynamic kinds.
+model SecurityLevelMember {
+  id      String  @id @default(uuid())
+  levelId String
+  kind    String
+  ref     String?
+
+  level SecurityLevel @relation(fields: [levelId], references: [id], onDelete: Cascade)
+
+  @@index([levelId])
+}
+
+// ---------- Sprint 031: screens & screen schemes ----------
+
+/// A screen = ordered tabs; each tab = ordered registry field ids
+/// ("summary", "customfield_10042", ...). Jira resolves screens per
+/// (project, issueType, operation) via IssueTypeScreenScheme → ScreenScheme.
+model Screen {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tabs  ScreenTab[]
+  items ScreenSchemeItem[]
+}
+
+model ScreenTab {
+  id       String @id @default(uuid())
+  screenId String
+  name     String
+  position Int    @default(0)
+
+  screen Screen           @relation(fields: [screenId], references: [id], onDelete: Cascade)
+  fields ScreenTabField[]
+
+  @@index([screenId, position])
+}
+
+model ScreenTabField {
+  id       String @id @default(uuid())
+  tabId    String
+  /// registry id: system key or customfield_NNNNN
+  fieldId  String
+  position Int    @default(0)
+
+  tab ScreenTab @relation(fields: [tabId], references: [id], onDelete: Cascade)
+
+  @@unique([tabId, fieldId])
+}
+
+/// operation: "default" | "create" | "edit" | "view" (Jira ScreenSchemeItem).
+model ScreenScheme {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  items              ScreenSchemeItem[]
+  /// ITSS rows that use this ScreenScheme as their unmapped default
+  defaultForSchemes  IssueTypeScreenScheme[] @relation("IssueTypeScreenSchemeDefault")
+  typeSchemeMappings ScreenSchemeMapping[]
+}
+
+model ScreenSchemeItem {
+  id        String @id @default(uuid())
+  schemeId  String
+  operation String
+  screenId  String
+
+  scheme ScreenScheme @relation(fields: [schemeId], references: [id], onDelete: Cascade)
+  screen Screen       @relation(fields: [screenId], references: [id], onDelete: Cascade)
+
+  @@unique([schemeId, operation])
+}
+
+/// Per-project scheme: issueTypeId → ScreenScheme (+ unmapped default).
+model IssueTypeScreenScheme {
+  id              String   @id @default(uuid())
+  name            String   @unique
+  description     String?
+  /// ScreenScheme used for issue types with no explicit mapping
+  defaultSchemeId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  defaultScheme ScreenScheme?         @relation("IssueTypeScreenSchemeDefault", fields: [defaultSchemeId], references: [id], onDelete: SetNull)
+  mappings      ScreenSchemeMapping[]
+  projects      Project[]
+}
+
+model ScreenSchemeMapping {
+  id             String @id @default(uuid())
+  schemeId       String
+  issueTypeId    String
+  screenSchemeId String
+
+  scheme       IssueTypeScreenScheme @relation(fields: [schemeId], references: [id], onDelete: Cascade)
+  screenScheme ScreenScheme          @relation(fields: [screenSchemeId], references: [id], onDelete: Cascade)
+  issueType    IssueType             @relation(fields: [issueTypeId], references: [id], onDelete: Cascade)
+
+  @@unique([schemeId, issueTypeId])
+}
+
+// ---------- Sprint 031: field configurations & schemes ----------
+
+/// A field configuration = per-field overrides: required, hidden,
+/// description, defaultValue, plus conditional rules evaluated against
+/// the issue's other fields (required-if / hidden-if / default-by-context).
+model FieldConfiguration {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  items             FieldConfigurationItem[]
+  defaultForSchemes FieldConfigurationScheme[] @relation("FieldConfigSchemeDefault")
+  schemeMappings    FieldConfigMapping[]
+}
+
+model FieldConfigurationItem {
+  id           String  @id @default(uuid())
+  configId     String
+  /// registry id: system key or customfield_NNNNN
+  fieldId      String
+  required     Boolean @default(false)
+  hidden       Boolean @default(false)
+  description  String?
+  /// default applied on create when the field is not provided (JSON scalar/array/object)
+  defaultValue Json?
+  /// conditional rules: [{when:{field,is|in|isNot|empty}, required?, hidden?, defaultValue?}]
+  rules        Json?
+
+  config FieldConfiguration @relation(fields: [configId], references: [id], onDelete: Cascade)
+
+  @@unique([configId, fieldId])
+}
+
+/// Per-project scheme: issueTypeId → FieldConfiguration (+ unmapped default).
+model FieldConfigurationScheme {
+  id              String   @id @default(uuid())
+  name            String   @unique
+  description     String?
+  defaultConfigId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  defaultConfig FieldConfiguration?  @relation("FieldConfigSchemeDefault", fields: [defaultConfigId], references: [id], onDelete: SetNull)
+  mappings      FieldConfigMapping[]
+  projects      Project[]
+}
+
+model FieldConfigMapping {
+  id          String @id @default(uuid())
+  schemeId    String
+  issueTypeId String
+  configId    String
+
+  scheme    FieldConfigurationScheme @relation(fields: [schemeId], references: [id], onDelete: Cascade)
+  config    FieldConfiguration       @relation(fields: [configId], references: [id], onDelete: Cascade)
+  issueType IssueType                @relation(fields: [issueTypeId], references: [id], onDelete: Cascade)
+
+  @@unique([schemeId, issueTypeId])
+}
+
+// ---------- 031: issue type schemes ----------
+model IssueTypeScheme {
+  id          String                @id @default(uuid())
+  name        String                @unique
+  description String?
+  updatedAt   DateTime              @default(now()) @updatedAt
+  items       IssueTypeSchemeItem[]
+  projects    Project[]
+}
+
+model IssueTypeSchemeItem {
+  id          String          @id @default(uuid())
+  schemeId    String
+  issueTypeId String
+  position    Int             @default(0)
+  scheme      IssueTypeScheme @relation(fields: [schemeId], references: [id], onDelete: Cascade)
+  issueType   IssueType       @relation(fields: [issueTypeId], references: [id])
+
+  @@unique([schemeId, issueTypeId])
+}
+
+// ---------- 031: workflow schemes ----------
+model WorkflowScheme {
+  id                String               @id @default(uuid())
+  name              String               @unique
+  description       String?
+  updatedAt         DateTime             @default(now()) @updatedAt
+  defaultWorkflowId String
+  defaultWorkflow   Workflow             @relation("SchemeDefaultWorkflow", fields: [defaultWorkflowId], references: [id])
+  items             WorkflowSchemeItem[]
+  projects          Project[]
+}
+
+model WorkflowSchemeItem {
+  id          String         @id @default(uuid())
+  schemeId    String
+  issueTypeId String
+  workflowId  String
+  scheme      WorkflowScheme @relation(fields: [schemeId], references: [id], onDelete: Cascade)
+  issueType   IssueType      @relation(fields: [issueTypeId], references: [id])
+  workflow    Workflow       @relation(fields: [workflowId], references: [id])
+
+  @@unique([schemeId, issueTypeId])
+}
+
+// ---------- Sprint 034: automation rules ----------
+model AutomationRule {
+  id                    String   @id @default(uuid())
+  name                  String
+  description           String?
+  scope                 String   @default("global") // global | project:<projectId>
+  projectId             String? // denormalized for index + scope filtering
+  actorId               String // run-as user
+  createdById           String // author — effective perms = actor ∩ author
+  enabled               Boolean  @default(true)
+  trigger               Json // {type, ...trigger-config}
+  conditions            Json     @default("[]") // [{type, ...}]
+  actions               Json // [{type, ...}]
+  version               Int      @default(1) // snapshot version at run time
+  failureCount          Int      @default(0)
+  disabledAfterFailures Int      @default(10)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  actor   User            @relation("RuleActor", fields: [actorId], references: [id])
+  author  User            @relation("RuleAuthor", fields: [createdById], references: [id])
+  project Project?        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  runs    AutomationRun[]
+
+  @@index([enabled])
+  @@index([projectId])
+}
+
+model AutomationRun {
+  id             String    @id @default(uuid())
+  ruleId         String
+  ruleVersion    Int
+  triggerEventId BigInt? // DomainEvent that fired it (null = manual/schedule)
+  issueId        String? // null for schedule batch runs; dangles after issue delete (audit)
+  status         String    @default("running") // success | some-errors | failed | skipped-loop
+  steps          Json      @default("[]") // [{step:'trigger'|'condition'|'action', detail, result, error?, at}]
+  error          String?
+  startedAt      DateTime  @default(now())
+  finishedAt     DateTime?
+
+  rule         AutomationRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  triggerEvent DomainEvent?   @relation(fields: [triggerEventId], references: [id], onDelete: SetNull)
+
+  @@index([ruleId, startedAt])
+  @@index([issueId])
+}
+
+// ---------- Sprint 036: identity ----------
+/// Browser sessions — enumerable + revocable; the session JWT carries `sid`.
+model Session {
+  id         String    @id @default(uuid())
+  userId     String
+  userAgent  String?
+  ip         String?
+  lastSeenAt DateTime  @default(now())
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+  expiresAt  DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+/// External identity provider configuration (OIDC).
+model IdentityProvider {
+  id            String   @id @default(uuid())
+  name          String   @unique // used in /auth/oidc/{name}
+  issuer        String
+  clientId      String
+  clientSecret  String? // AES-256-GCM at rest (065 F3); readSecret() handles legacy plaintext rows
+  scopes        String   @default("openid email profile")
+  claimMap      Json     @default("{}") // {email?, emailVerified?, name?, subject?}
+  autoProvision Boolean  @default(true)
+  enabled       Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  identities OidcIdentity[]
+}
+
+model OidcIdentity {
+  id        String   @id @default(uuid())
+  userId    String
+  idpId     String
+  subject   String
+  email     String
+  createdAt DateTime @default(now())
+
+  user User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  idp  IdentityProvider @relation(fields: [idpId], references: [id], onDelete: Cascade)
+
+  @@unique([idpId, subject])
+  @@index([userId])
+}
+
+// ---------- Sprint 049: OAuth 2.1 authorization server ----------
+/// Registered clients — confidential (secret) or public (PKCE-only).
+model OAuthClient {
+  id                  String   @id @default(uuid())
+  clientId            String   @unique
+  clientSecretHash    String? // null = public client
+  name                String
+  redirectUris        String[] // exact match only
+  grantTypes          String[] // authorization_code | refresh_token | client_credentials | urn:ietf:params:oauth:grant-type:device_code
+  allowedScopes       String[] // read | write | admin
+  allowedProjectKeys  String[] // empty = all
+  serviceUserId       String? // client_credentials actor
+  metadataDocumentUrl String? // Client ID Metadata Document (MCP registration)
+  registrationType    String   @default("pre-registered") // pre-registered | dynamic | metadata-document
+  enabled             Boolean  @default(true)
+  createdAt           DateTime @default(now())
+
+  serviceUser User?                    @relation("OAuthServiceUser", fields: [serviceUserId], references: [id], onDelete: SetNull)
+  codes       OAuthAuthorizationCode[]
+  grants      OAuthGrant[]
+  deviceCodes OAuthDeviceCode[]
+}
+
+model OAuthAuthorizationCode {
+  id            String    @id @default(uuid())
+  hash          String    @unique
+  clientDbId    String
+  userId        String
+  redirectUri   String
+  scopes        String[]
+  projectKeys   String[]
+  codeChallenge String // S256 — mandatory (OAuth 2.1)
+  expiresAt     DateTime // <= 60s TTL
+  usedAt        DateTime? // single-use
+  createdAt     DateTime  @default(now())
+
+  client OAuthClient @relation(fields: [clientDbId], references: [id], onDelete: Cascade)
+  user   User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+/// A consented grant chain — revoking it kills refresh now, access soon (short JWT).
+model OAuthGrant {
+  id          String    @id @default(uuid())
+  clientDbId  String
+  userId      String? // null on pure client_credentials grants
+  scopes      String[]
+  projectKeys String[]
+  revokedAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  client        OAuthClient         @relation(fields: [clientDbId], references: [id])
+  user          User?               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  refreshTokens OAuthRefreshToken[]
+
+  @@index([clientDbId, userId])
+}
+
+model OAuthRefreshToken {
+  id            String    @id @default(uuid())
+  hash          String    @unique
+  grantId       String
+  rotatedToId   String? // set when this token was legitimately rotated away
+  expiresAt     DateTime
+  revokedAt     DateTime?
+  reuseDetected Boolean   @default(false) // RFC 9700 — replay kills the chain
+  createdAt     DateTime  @default(now())
+
+  grant OAuthGrant @relation(fields: [grantId], references: [id], onDelete: Cascade)
+
+  @@index([grantId])
+}
+
+/// RFC 8628 device flow — CLI polls with deviceCode until a human approves via userCode.
+model OAuthDeviceCode {
+  id          String    @id @default(uuid())
+  hash        String    @unique // device_code
+  userCode    String    @unique // human-typed code (XXXX-XXXX)
+  clientDbId  String
+  scopes      String[]
+  projectKeys String[]
+  userId      String? // set on approval; denial → deniedAt
+  deniedAt    DateTime?
+  lastPollAt  DateTime?
+  intervalSec Int       @default(5)
+  expiresAt   DateTime
+  createdAt   DateTime  @default(now())
+
+  client OAuthClient @relation(fields: [clientDbId], references: [id], onDelete: Cascade)
+  user   User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([clientDbId])
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+// ---------- Sprint 049 Track A: directory integration ----------
+/// A directory link — SCIM (IdP-pushed) or LDAP (bind auth + scheduled sync).
+/// Secrets live in secretRef / ScimToken.hash — never in config (FR-007).
+model DirectoryConnection {
+  id         String    @id @default(uuid())
+  type       String // 'scim' | 'ldap'
+  name       String
+  config     Json      @default("{}") // hosts, tls, baseDn, filters, attrMap, groupMap — non-secret
+  secretRef  String? // LDAP bind secret — env/secret-store reference, never the value
+  enabled    Boolean   @default(false)
+  lastSyncAt DateTime?
+  syncStatus Json      @default("{}") // {state, log[], stats} — machine-readable (AI checklist)
+  createdAt  DateTime  @default(now())
+
+  scimTokens ScimToken[]
+  identities ExternalIdentity[]
+}
+
+/// One user ↔ many provider links; matched by immutable externalId, never name (FR-004).
+model ExternalIdentity {
+  id                    String   @id @default(uuid())
+  userId                String
+  provider              String // 'scim' | 'ldap' | 'oidc-link'
+  externalId            String
+  directoryConnectionId String
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  user       User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  connection DirectoryConnection @relation(fields: [directoryConnectionId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, directoryConnectionId, externalId])
+  @@index([userId])
+}
+
+/// Per-connection SCIM bearer — hashed like ApiToken; identifies the IdP, not a user.
+model ScimToken {
+  id           String    @id @default(uuid())
+  connectionId String
+  name         String
+  prefix       String
+  hash         String    @unique
+  lastUsedAt   DateTime?
+  revokedAt    DateTime?
+  createdAt    DateTime  @default(now())
+
+  connection DirectoryConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+}
+
+/// One-time password-reset tokens (036).
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  userId    String
+  hash      String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// ---------- Sprint 038: git integration ----------
+model DevRepository {
+  id            String   @id @default(uuid())
+  name          String
+  provider      String // github | gitlab | bitbucket
+  baseUrl       String
+  webhookSecret String // AES-256-GCM at rest (065 F3); readSecret() handles legacy plaintext rows
+  projectKeyMap Json     @default("{}") // {repoExternalId?: projectKey}
+  enabled       Boolean  @default(true)
+  // 051: provider-specific extras. For gitlab: {apiTokenRef, groupPath,
+  // signingToken, mode: webhook|poll|both, verifySsl, syncCursor,
+  // backfill: {state, done, total, error}, lastTestAt, lastError}
+  gitlab        Json?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  items      DevelopmentItem[]
+  deliveries DevDelivery[]
+}
+
+model DevelopmentItem {
+  id          String   @id @default(uuid())
+  repoId      String
+  type        String // branch | commit | pull_request | build | deployment
+  externalId  String
+  title       String
+  url         String?
+  authorName  String?
+  authorEmail String?
+  state       String   @default("") // open|merged|closed|success|failed|…
+  payload     Json
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  repo   DevRepository          @relation(fields: [repoId], references: [id], onDelete: Cascade)
+  issues DevelopmentItemIssue[]
+
+  @@unique([repoId, type, externalId])
+  @@index([repoId])
+}
+
+model DevelopmentItemIssue {
+  itemId  String
+  issueId String
+
+  item  DevelopmentItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  issue Issue           @relation(fields: [issueId], references: [id], onDelete: Cascade)
+
+  @@id([itemId, issueId])
+  @@index([issueId])
+}
+
+model DevDelivery {
+  id         String   @id @default(uuid())
+  repoId     String
+  deliveryId String // provider delivery/event id for dedupe
+  status     String // processed | duplicate | bad_signature | error
+  error      String?
+  payload    Json?
+  createdAt  DateTime @default(now())
+
+  repo DevRepository @relation(fields: [repoId], references: [id], onDelete: Cascade)
+
+  @@unique([repoId, deliveryId])
+}

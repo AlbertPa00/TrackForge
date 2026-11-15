@@ -1,0 +1,593 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* atl-* theme tokens ("R G B" triplets consumed by tailwind.config.js).
+ * Light values are the original Atlassian palette; the dark block inverts the
+ * neutral ramp and aligns accents to the docs portal's --d-* dark palette.
+ * Resolved scheme arrives via <html data-theme="light|dark"> (lib/theme.ts +
+ * the index.html bootstrap), and style.colorScheme keeps built-in UI
+ * (scrollbars, form controls) in step. */
+:root {
+  color-scheme: light dark;
+  --atl-paper: 255 255 255;
+  --atl-n-900: 9 30 66;
+  --atl-n-800: 23 43 77;
+  --atl-n-700: 37 56 88;
+  --atl-n-600: 52 69 99;
+  --atl-n-500: 66 82 110;
+  --atl-n-400: 80 95 121;
+  --atl-n-300: 94 108 132;
+  --atl-n-200: 107 119 140;
+  --atl-n-100: 122 134 154;
+  --atl-n-90: 137 147 164;
+  --atl-n-80: 151 160 175;
+  --atl-n-70: 165 173 186;
+  --atl-n-60: 179 186 197;
+  --atl-n-50: 193 199 208;
+  --atl-n-40: 223 225 230;
+  --atl-n-30: 235 236 240;
+  --atl-n-20: 244 245 247;
+  --atl-n-10: 250 251 252;
+  --atl-b-500: 0 73 176;
+  --atl-b-400: 0 85 204;
+  --atl-b-300: 12 102 228;
+  --atl-b-200: 29 122 252;
+  --atl-b-100: 87 157 255;
+  --atl-b-75: 204 224 255;
+  --atl-b-50: 233 242 255;
+  --atl-g-500: 0 102 68;
+  --atl-g-400: 0 135 90;
+  --atl-g-300: 54 179 126;
+  --atl-g-200: 87 217 163;
+  --atl-g-75: 121 242 192;
+  --atl-g-50: 227 252 239;
+  --atl-y-500: 255 139 0;
+  --atl-y-300: 255 171 0;
+  --atl-y-75: 255 227 128;
+  --atl-y-50: 255 250 230;
+  --atl-r-500: 191 38 0;
+  --atl-r-400: 222 53 11;
+  --atl-r-300: 255 86 48;
+  --atl-r-50: 255 235 230;
+  --atl-p-700: 64 50 148;
+  --atl-p-300: 135 119 217;
+  --atl-p-200: 153 141 217;
+  --atl-p-50: 234 230 255;
+  --atl-t-300: 0 184 217;
+  --atl-t-200: 0 199 230;
+  --atl-t-50: 230 252 255;
+  --atl-lozenge-new: 68 84 111;
+  --atl-lozenge-progress: 12 102 228;
+  --atl-lozenge-done: 31 132 90;
+  --atl-card: 241 242 244;
+  --atl-inverse: 29 33 37;
+  --atl-topbar: 7 71 166;
+}
+
+:root[data-theme='dark'] {
+  --atl-paper: 26 30 38;
+  --atl-n-900: 240 242 246;
+  --atl-n-800: 230 233 238;
+  --atl-n-700: 208 215 222;
+  --atl-n-600: 185 191 201;
+  --atl-n-500: 163 171 183;
+  --atl-n-400: 143 151 163;
+  --atl-n-300: 122 130 142;
+  --atl-n-200: 100 107 118;
+  --atl-n-100: 89 99 111;
+  --atl-n-90: 79 87 99;
+  --atl-n-80: 70 78 89;
+  --atl-n-70: 62 70 81;
+  --atl-n-60: 55 63 73;
+  --atl-n-50: 48 56 66;
+  --atl-n-40: 44 49 58;
+  --atl-n-30: 37 42 50;
+  --atl-n-20: 30 35 43;
+  --atl-n-10: 15 17 21;
+  --atl-b-500: 21 88 188;
+  --atl-b-400: 29 122 252;
+  --atl-b-300: 70 136 236;
+  --atl-b-200: 87 157 255;
+  --atl-b-100: 133 184 255;
+  --atl-b-75: 59 95 168;
+  --atl-b-50: 27 44 73;
+  --atl-g-500: 42 187 127;
+  --atl-g-400: 34 160 107;
+  --atl-g-300: 75 206 151;
+  --atl-g-200: 126 226 184;
+  --atl-g-75: 30 92 64;
+  --atl-g-50: 18 51 42;
+  --atl-y-500: 226 178 3;
+  --atl-y-300: 245 205 71;
+  --atl-y-75: 110 90 14;
+  --atl-y-50: 51 46 27;
+  --atl-r-500: 226 72 61;
+  --atl-r-400: 241 91 80;
+  --atl-r-300: 248 113 104;
+  --atl-r-50: 66 34 31;
+  --atl-p-700: 160 142 240;
+  --atl-p-300: 159 143 239;
+  --atl-p-200: 184 169 249;
+  --atl-p-50: 43 36 81;
+  --atl-t-300: 108 195 224;
+  --atl-t-200: 154 220 240;
+  --atl-t-50: 30 59 68;
+  --atl-lozenge-new: 93 107 122;
+  --atl-lozenge-progress: 29 122 252;
+  --atl-lozenge-done: 34 160 107;
+  --atl-card: 30 35 43;
+  --atl-inverse: 22 26 29;
+  --atl-topbar: 22 26 29;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  @apply bg-atl-paper text-atl-n-800 antialiased;
+}
+
+/* Rendered markdown (descriptions, comments) — scoped so preflight doesn't flatten it. */
+.tf-markdown h1 { @apply text-xl font-semibold mt-4 mb-2; }
+.tf-markdown h2 { @apply text-lg font-semibold mt-4 mb-2; }
+.tf-markdown h3 { @apply text-base font-semibold mt-3 mb-1.5; }
+.tf-markdown h4, .tf-markdown h5, .tf-markdown h6 { @apply text-sm font-semibold mt-3 mb-1; }
+.tf-markdown p { @apply my-2; }
+.tf-markdown ul { @apply list-disc pl-6 my-2; }
+.tf-markdown ol { @apply list-decimal pl-6 my-2; }
+.tf-markdown li { @apply my-0.5; }
+.tf-markdown a { @apply text-atl-b-300 hover:underline; }
+.tf-markdown code { @apply rounded bg-atl-n-20 px-1 py-0.5 text-[0.85em] font-mono text-atl-r-400; }
+.tf-markdown pre { @apply rounded bg-atl-n-10 border border-atl-n-30 p-3 my-2 overflow-x-auto; }
+.tf-markdown pre code { @apply bg-transparent p-0 text-atl-n-700; }
+.tf-markdown blockquote { @apply border-l-4 border-atl-n-40 pl-3 my-2 text-atl-n-300; }
+.tf-markdown hr { @apply border-atl-n-30 my-3; }
+.tf-markdown table { @apply border-collapse my-2 text-sm; }
+.tf-markdown th, .tf-markdown td { @apply border border-atl-n-30 px-2 py-1 text-left; }
+.tf-markdown th { @apply bg-atl-n-10 font-semibold; }
+.tf-markdown > :first-child { @apply mt-0; }
+.tf-markdown > :last-child { @apply mb-0; }
+
+/* 037 US2-1 — WCAG AA: atl-n-100/n-200 text fails 4.5:1 on light surfaces.
+   Remap muted *text* to the n-300 token (~4.9:1 light); border/icon tokens untouched. */
+.text-atl-n-100, .text-atl-n-200 { color: rgb(var(--atl-n-300)); }
+
+/* Native <dialog> overlays — backdrop + scroll containment (Modal, IssueDrawer,
+   docs SearchPalette). overscroll-behavior is progressive enhancement: where it
+   is not enforced on non-scrollable containers, showModal() still makes the
+   page inert. */
+dialog.tf-modal:modal,
+dialog.tf-drawer:modal,
+dialog.tf-palette:modal {
+  overscroll-behavior: contain;
+}
+dialog.tf-modal::backdrop,
+dialog.tf-drawer::backdrop,
+dialog.tf-palette::backdrop {
+  overflow: hidden;
+  overscroll-behavior: contain;
+}
+/* Light scheme: soft blue veil + gentle blur (glass scrim) instead of a heavy
+   black blanket. backdrop-filter is progressive enhancement — unsupported
+   engines just get the tinted color. */
+dialog.tf-modal::backdrop {
+  background: rgb(9 30 66 / 0.32);
+  backdrop-filter: blur(3px);
+}
+dialog.tf-drawer::backdrop {
+  background: rgb(9 30 66 / 0.18);
+}
+dialog.tf-palette::backdrop {
+  background: rgb(9 30 66 / 0.36);
+  backdrop-filter: blur(3px);
+}
+:root[data-theme='dark'] dialog.tf-modal::backdrop,
+:root[data-theme='dark'] dialog.tf-palette::backdrop {
+  background: rgb(0 0 0 / 0.55);
+}
+:root[data-theme='dark'] dialog.tf-drawer::backdrop {
+  background: rgb(0 0 0 / 0.35);
+}
+
+/* System/health page status colors (SystemPage inline styles). */
+:root {
+  --tf-success-bg: #E3FCEF;
+  --tf-danger-bg: #FFEBE6;
+  --tf-success: #006644;
+  --tf-danger: #BF2600;
+  --tf-text-subtle: #6B778C;
+  --tf-border: #DFE1E6;
+}
+
+/* ---------------------------------------------------------------------------
+ * Docs portal theme (050 refresh). The portal is a self-contained surface with
+ * its own light/dark theming — components inside `.docs-scope` consume
+ * var(--d-*) tokens; `.docs-dark` flips them. Code blocks stay dark in both
+ * themes, matching docs.devin.ai/Mintlify.
+ * -------------------------------------------------------------------------*/
+.docs-scope {
+  --d-bg: #ffffff;
+  --d-surface: #f7f8fa;
+  --d-raised: #ffffff;
+  --d-text: #1d2125;
+  --d-text-subtle: #454f59;
+  --d-muted: #626f86;
+  --d-faint: #8993a4;
+  --d-border: #e2e5e9;
+  --d-border-soft: #eef0f2;
+  --d-hover: #f1f2f4;
+  --d-active: #e9f2ff;
+  --d-accent: #0c66e4;
+  --d-accent-strong: #0055cc;
+  --d-accent-soft: rgba(12, 102, 228, 0.09);
+  --d-code-bg: #161b22;
+  --d-code-border: #242c35;
+  --d-code-head: rgba(255, 255, 255, 0.45);
+  --d-code-text: #dbe1e8;
+  --d-code-inline-bg: #f1f2f4;
+  --d-shadow: 0 12px 32px -8px rgba(9, 30, 66, 0.18), 0 2px 8px rgba(9, 30, 66, 0.08);
+  color-scheme: light;
+}
+.docs-scope.docs-dark {
+  --d-bg: #0f1115;
+  --d-surface: #15181e;
+  --d-raised: #1a1e26;
+  --d-text: #e6e9ee;
+  --d-text-subtle: #b9bfc9;
+  --d-muted: #8f97a3;
+  --d-faint: #646b76;
+  --d-border: #2c313a;
+  --d-border-soft: #22262e;
+  --d-hover: #1e232b;
+  --d-active: #1b2c49;
+  --d-accent: #579dff;
+  --d-accent-strong: #85b8ff;
+  --d-accent-soft: rgba(87, 157, 255, 0.14);
+  --d-code-bg: #0b0e13;
+  --d-code-border: #242c35;
+  --d-code-head: rgba(255, 255, 255, 0.4);
+  --d-code-text: #dbe1e8;
+  --d-code-inline-bg: #21262e;
+  --d-shadow: 0 12px 32px -8px rgba(0, 0, 0, 0.55), 0 2px 8px rgba(0, 0, 0, 0.4);
+  color-scheme: dark;
+}
+.docs-scope :focus-visible {
+  outline: 2px solid var(--d-accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Shared widget classes so markup stays readable. */
+.d-input {
+  width: 100%;
+  border: 1px solid var(--d-border);
+  border-radius: 8px;
+  background: var(--d-raised);
+  color: var(--d-text);
+  font-size: 0.875rem;
+  padding: 0.4rem 0.65rem;
+  outline: none;
+}
+.d-input::placeholder { color: var(--d-faint); }
+.d-input:focus { border-color: var(--d-accent); }
+.d-kbd {
+  display: inline-block;
+  border: 1px solid var(--d-border);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  background: var(--d-surface);
+  color: var(--d-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10.5px;
+  line-height: 1;
+  padding: 3px 5px;
+}
+.d-card {
+  display: block;
+  border: 1px solid var(--d-border);
+  border-radius: 10px;
+  background: var(--d-raised);
+  transition: border-color 0.12s, box-shadow 0.12s, transform 0.12s;
+}
+a.d-card:hover,
+.d-card.d-card-link:hover {
+  border-color: var(--d-accent);
+  box-shadow: var(--d-shadow);
+  transform: translateY(-1px);
+}
+.d-navitem {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border-radius: 6px;
+  padding: 0.3rem 0.5rem;
+  font-size: 0.875rem;
+  color: var(--d-text-subtle);
+}
+.d-navitem:hover { background: var(--d-hover); color: var(--d-text); }
+.d-navitem.active {
+  background: var(--d-active);
+  color: var(--d-accent-strong);
+  font-weight: 500;
+}
+.d-chip {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--d-border);
+  border-radius: 999px;
+  background: var(--d-surface);
+  color: var(--d-muted);
+  font-size: 0.6875rem;
+  padding: 0.1rem 0.5rem;
+}
+.d-btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  border-radius: 6px;
+  padding: 0.3rem 0.55rem;
+  font-size: 0.8125rem;
+  color: var(--d-muted);
+}
+.d-btn-ghost:hover { background: var(--d-hover); color: var(--d-text); }
+.d-scrollbar::-webkit-scrollbar { width: 10px; height: 10px; }
+.d-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--d-border);
+  border: 3px solid transparent;
+  border-radius: 8px;
+  background-clip: content-box;
+}
+.d-scrollbar::-webkit-scrollbar-track { background: transparent; }
+
+/* --- Docs typography (rendered markdown inside the portal only) --- */
+.tf-docs {
+  color: var(--d-text-subtle);
+  font-size: 0.9375rem;
+  line-height: 1.75;
+}
+.tf-docs h1,
+.tf-docs h2,
+.tf-docs h3,
+.tf-docs h4,
+.tf-docs h5,
+.tf-docs h6 {
+  color: var(--d-text);
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+.tf-docs h1 { font-size: 1.5rem; margin: 2.25rem 0 0.75rem; }
+.tf-docs h2 {
+  font-size: 1.375rem;
+  margin: 2.5rem 0 0.75rem;
+  padding-top: 1.75rem;
+  border-top: 1px solid var(--d-border-soft);
+}
+.tf-docs h3 { font-size: 1.125rem; margin: 2rem 0 0.5rem; }
+.tf-docs h4 { font-size: 0.9375rem; margin: 1.5rem 0 0.375rem; }
+.tf-docs h5,
+.tf-docs h6 { font-size: 0.875rem; margin: 1.25rem 0 0.375rem; }
+.tf-docs > :first-child { margin-top: 0; }
+.tf-docs h2:first-child { padding-top: 0; border-top: 0; }
+.tf-docs .tf-anchor {
+  opacity: 0;
+  margin-left: 0.4rem;
+  color: var(--d-faint);
+  font-weight: 400;
+  text-decoration: none;
+  transition: opacity 0.12s;
+}
+.tf-docs h1:hover .tf-anchor,
+.tf-docs h2:hover .tf-anchor,
+.tf-docs h3:hover .tf-anchor,
+.tf-docs h4:hover .tf-anchor,
+.tf-docs .tf-anchor:focus { opacity: 1; }
+.tf-docs .tf-anchor:hover { color: var(--d-accent); }
+.tf-docs p { margin: 0.875rem 0; }
+.tf-docs a { color: var(--d-accent); text-underline-offset: 2px; }
+.tf-docs a:hover { text-decoration: underline; }
+.tf-docs ul,
+.tf-docs ol { margin: 0.875rem 0; padding-left: 1.5rem; }
+.tf-docs ul { list-style: disc; }
+.tf-docs ol { list-style: decimal; }
+.tf-docs li { margin: 0.3rem 0; }
+.tf-docs li::marker { color: var(--d-faint); }
+.tf-docs code {
+  background: var(--d-code-inline-bg);
+  border: 1px solid var(--d-border-soft);
+  border-radius: 5px;
+  padding: 0.1em 0.35em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85em;
+  color: var(--d-text);
+}
+.tf-docs blockquote {
+  border-left: 3px solid var(--d-border);
+  padding-left: 1rem;
+  margin: 1rem 0;
+  color: var(--d-muted);
+}
+.tf-docs hr { border: 0; border-top: 1px solid var(--d-border-soft); margin: 2.5rem 0; }
+.tf-docs img { max-width: 100%; border-radius: 8px; border: 1px solid var(--d-border-soft); }
+.tf-docs table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.25rem 0;
+  font-size: 0.875rem;
+}
+.tf-docs th {
+  text-align: left;
+  font-weight: 600;
+  color: var(--d-text);
+  padding: 0.5rem 0.75rem;
+  border-bottom: 2px solid var(--d-border);
+}
+.tf-docs td { padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--d-border-soft); }
+.tf-docs tr:hover td { background: var(--d-surface); }
+.tf-docs details {
+  border: 1px solid var(--d-border-soft);
+  border-radius: 8px;
+  padding: 0.65rem 1rem;
+  margin: 1rem 0;
+}
+.tf-docs summary { cursor: pointer; font-weight: 500; color: var(--d-text); }
+
+/* --- Code blocks: dark surface in both themes, lang header + copy --- */
+.tf-code {
+  position: relative;
+  margin: 1.25rem 0;
+  border: 1px solid var(--d-code-border);
+  border-radius: 10px;
+  background: var(--d-code-bg);
+  overflow: hidden;
+}
+.tf-code::before {
+  content: attr(data-lang);
+  display: block;
+  padding: 0.45rem 0.9rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--d-code-head);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.6875rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.tf-code .tf-pre {
+  margin: 0;
+  padding: 0.85rem 1rem;
+  overflow-x: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.8125rem;
+  line-height: 1.65;
+  color: var(--d-code-text);
+}
+.tf-code .tf-pre code {
+  background: none;
+  border: 0;
+  padding: 0;
+  font-size: inherit;
+  color: inherit;
+}
+.tf-copy {
+  position: absolute;
+  top: 0.35rem;
+  right: 0.45rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 0.6875rem;
+  padding: 0.2rem 0.5rem;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s, background 0.12s;
+}
+.tf-code:hover .tf-copy,
+.tf-copy:focus-visible { opacity: 1; }
+.tf-copy:hover { background: rgba(255, 255, 255, 0.14); color: #fff; }
+.tf-copy.copied { color: #57d9a3; border-color: rgba(87, 217, 163, 0.4); opacity: 1; }
+
+/* --- Callouts (rendered from `> [!NOTE]` etc.) --- */
+.tf-callout {
+  --co: var(--d-accent);
+  border: 1px solid color-mix(in srgb, var(--co) 32%, var(--d-border));
+  border-left: 3px solid var(--co);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--co) 7%, var(--d-bg));
+  padding: 0.75rem 1rem;
+  margin: 1.25rem 0;
+}
+.tf-callout-title {
+  color: var(--co);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  margin-bottom: 0.25rem;
+}
+.tf-callout p { margin: 0.25rem 0; }
+.tf-callout-note { --co: #0c66e4; }
+.tf-callout-tip { --co: #1f845a; }
+.tf-callout-warning { --co: #946f00; }
+.tf-callout-important { --co: #6e5dc6; }
+.tf-callout-caution { --co: #de350b; }
+.docs-dark .tf-callout-note { --co: #579dff; }
+.docs-dark .tf-callout-tip { --co: #4bce97; }
+.docs-dark .tf-callout-warning { --co: #e2b203; }
+.docs-dark .tf-callout-important { --co: #b8a9ff; }
+.docs-dark .tf-callout-caution { --co: #ff7452; }
+
+/* --- API explorer method chips --- */
+.m-chip {
+  display: inline-block;
+  min-width: 3.25rem;
+  text-align: center;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  padding: 0.15rem 0.5rem;
+  border-radius: 5px;
+}
+.m-get { background: rgba(31, 132, 90, 0.14); color: #1f845a; }
+.m-post { background: rgba(12, 102, 228, 0.12); color: #0c66e4; }
+.m-put { background: rgba(148, 111, 0, 0.14); color: #946f00; }
+.m-patch { background: rgba(0, 156, 180, 0.14); color: #00809b; }
+.m-delete { background: rgba(222, 53, 11, 0.12); color: #de350b; }
+.m-other { background: var(--d-hover); color: var(--d-muted); }
+.docs-dark .m-get { color: #4bce97; }
+.docs-dark .m-post { color: #579dff; }
+.docs-dark .m-put { color: #e2b203; }
+.docs-dark .m-patch { color: #00c7e6; }
+.docs-dark .m-delete { color: #ff7452; }
+
+/* --- highlight.js token colors (github-dark-ish; code bg is always dark) --- */
+.tf-code .hljs-comment,
+.tf-code .hljs-quote { color: #8b949e; font-style: italic; }
+.tf-code .hljs-keyword,
+.tf-code .hljs-selector-tag,
+.tf-code .hljs-template-tag { color: #ff7b72; }
+.tf-code .hljs-string,
+.tf-code .hljs-regexp,
+.tf-code .hljs-meta .hljs-string { color: #a5d6ff; }
+.tf-code .hljs-number,
+.tf-code .hljs-literal,
+.tf-code .hljs-variable,
+.tf-code .hljs-template-variable { color: #79c0ff; }
+.tf-code .hljs-title,
+.tf-code .hljs-title.function_,
+.tf-code .hljs-section { color: #d2a8ff; }
+.tf-code .hljs-type,
+.tf-code .hljs-title.class_,
+.tf-code .hljs-built_in { color: #ffa657; }
+.tf-code .hljs-attr,
+.tf-code .hljs-attribute,
+.tf-code .hljs-name,
+.tf-code .hljs-selector-class,
+.tf-code .hljs-selector-id { color: #7ee787; }
+.tf-code .hljs-symbol,
+.tf-code .hljs-bullet,
+.tf-code .hljs-link { color: #f2cc60; }
+.tf-code .hljs-meta,
+.tf-code .hljs-selector-pseudo { color: #79c0ff; }
+.tf-code .hljs-emphasis { font-style: italic; }
+.tf-code .hljs-strong { font-weight: 700; }
+.tf-code .hljs-addition { color: #aff5b4; background: rgba(46, 160, 67, 0.15); }
+.tf-code .hljs-deletion { color: #ffdcd7; background: rgba(248, 81, 73, 0.15); }
+
+
+/* Defer off-screen render work in long scroll lists — content-visibility lets
+   the browser skip layout/paint for skipped items; the intrinsic block size
+   keeps scrollbar geometry stable. --defer-h estimates the item height
+   (board card ~110px, backlog row ~40px); 'auto' remembers the real size
+   after first render so a wrong estimate only affects unrendered items. */
+.render-defer {
+  content-visibility: auto;
+  contain-intrinsic-width: none;
+  contain-intrinsic-block-size: auto var(--defer-h, 110px);
+}

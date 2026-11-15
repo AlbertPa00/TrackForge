@@ -1,0 +1,61 @@
+name: docs-site
+
+# Public docs site (docs/.vitepress) → GitHub Pages. The sidebar is generated
+# from docs/manifest.json — new pages ship automatically once added to the
+# manifest. openapi.json is exported from the backend's own document builder,
+# so the published spec can never drift from the served one.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/**'
+      - 'apps/backend/src/lib/openapi.ts'
+      - 'apps/backend/src/lib/validation.ts'
+      - 'apps/backend/scripts/export-openapi.ts'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build site (exports openapi.json first)
+        env:
+          DOCS_BASE: /${{ github.event.repository.name }}/
+        run: pnpm docs:build
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/.vitepress/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

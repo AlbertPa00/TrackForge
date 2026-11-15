@@ -1,0 +1,8 @@
+[
+  {
+    "id": "GHSA-mrhx-c7xc-m3w5",
+    "expires": "2026-12-15",
+    "reason": "zod 3.25.76 — DoS needs attacker-controlled oversized schemas; our schemas are static. Upgrade to zod 4.6.6+ tracked post-launch; re-triage before expiry.",
+    "issue": "TODO: file issue on public repo"
+  }
+]

@@ -1,0 +1,66 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+build/
+*.tsbuildinfo
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Database
+*.db
+*.db-journal
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Testing
+coverage/
+test-results/
+playwright-report/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Turborepo
+.turbo/
+
+# Misc
+.cache/
+
+# tsc build artifacts
+apps/frontend/vite.config.js
+apps/frontend/vite.config.d.ts
+
+# Stray tool artifacts (accidental redirects, curl cookie jars)
+nul
+cj*.txt
+*.cookies.txt
+apps/frontend/shots/
+
+# Docs site (VitePress)
+docs/.vitepress/dist/
+docs/.vitepress/cache/
+docs/public/openapi.json
+
+# Runtime data (never publish)
+apps/backend/attachments/
+apps/backend/backups/
+
+# Ad-hoc data dumps / scratch exports
+eg*.json

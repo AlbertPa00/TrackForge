@@ -1,0 +1,437 @@
+{
+  "$schema": "./manifest.schema.json",
+  "version": 1,
+  "pages": [
+    {
+      "slug": "capability-matrix",
+      "title": "Capabilities & Jira comparison",
+      "section": "overview",
+      "audience": "public",
+      "source": "capability-matrix.md",
+      "ownerSprint": "043",
+      "description": "What TrackForge does and how it compares to Jira, feature by feature."
+    },
+    {
+      "slug": "install",
+      "title": "Install & quickstart",
+      "section": "overview",
+      "audience": "public",
+      "source": "install.md",
+      "ownerSprint": "043",
+      "description": "Run TrackForge in a single container in under 10 minutes."
+    },
+    {
+      "slug": "architecture",
+      "title": "Architecture overview",
+      "section": "overview",
+      "audience": "public",
+      "source": "architecture.md",
+      "ownerSprint": "000",
+      "description": "The system in four diagrams: context, request pipeline, agent loop, deploy topology."
+    },
+    {
+      "slug": "user-guide",
+      "title": "User guide",
+      "section": "user-guide",
+      "audience": "authed",
+      "source": "user-guide.md",
+      "ownerSprint": "042",
+      "description": "Issues, boards, sprints, search, and everyday workflows."
+    },
+    {
+      "slug": "fields",
+      "title": "Fields & custom fields",
+      "section": "user-guide",
+      "audience": "authed",
+      "source": "fields.md",
+      "ownerSprint": "020",
+      "description": "Built-in and custom fields, their types, and how they render."
+    },
+    {
+      "slug": "adf",
+      "title": "Rich text (ADF) notes",
+      "section": "user-guide",
+      "audience": "authed",
+      "source": "adf.md",
+      "ownerSprint": "040",
+      "description": "Atlassian Document Format notes for API users."
+    },
+    {
+      "slug": "ai",
+      "title": "AI features & agent experience",
+      "section": "user-guide",
+      "audience": "authed",
+      "source": "ai.md",
+      "ownerSprint": "047",
+      "description": "Copilot, agent sessions, approvals, and AI settings."
+    },
+    {
+      "slug": "agents",
+      "title": "Working with agents",
+      "section": "user-guide",
+      "audience": "authed",
+      "source": "agents.md",
+      "ownerSprint": "047",
+      "description": "Delegate work to agent accounts via REST or MCP."
+    },
+    {
+      "slug": "automation",
+      "title": "Automation rules",
+      "section": "user-guide",
+      "audience": "authed",
+      "source": "automation.md",
+      "ownerSprint": "034",
+      "description": "Trigger-condition-action rules that run on issue events."
+    },
+    {
+      "slug": "webhooks",
+      "title": "Webhooks",
+      "section": "user-guide",
+      "audience": "authed",
+      "source": "webhooks.md",
+      "ownerSprint": "011",
+      "description": "Push issue events to external HTTP endpoints."
+    },
+    {
+      "slug": "admin-guide",
+      "title": "Administration guide",
+      "section": "admin",
+      "audience": "admin",
+      "source": "admin-guide.md",
+      "ownerSprint": "021",
+      "description": "Configure workflows, permissions, schemes, and projects."
+    },
+    {
+      "slug": "identity",
+      "title": "Identity: SSO, SCIM, LDAP, OAuth",
+      "section": "admin",
+      "audience": "admin",
+      "source": "identity.md",
+      "ownerSprint": "049",
+      "description": "SSO, SCIM, LDAP, OAuth 2.1, and token management."
+    },
+    {
+      "slug": "security-model",
+      "title": "Security model",
+      "section": "admin",
+      "audience": "admin",
+      "source": "security-model.md",
+      "ownerSprint": "035",
+      "description": "Permissions, scopes, and trust boundaries for users and agents."
+    },
+    {
+      "slug": "threat-model",
+      "title": "Threat model",
+      "section": "admin",
+      "audience": "admin",
+      "source": "threat-model.md",
+      "ownerSprint": "049",
+      "description": "Attack surface analysis and mitigations."
+    },
+    {
+      "slug": "security-hardening",
+      "title": "Security hardening checklist",
+      "section": "admin",
+      "audience": "admin",
+      "source": "security-hardening.md",
+      "ownerSprint": "035",
+      "description": "Lock down a production deployment, step by step."
+    },
+    {
+      "slug": "hardening-backlog",
+      "title": "Hardening backlog",
+      "section": "admin",
+      "audience": "admin",
+      "source": "hardening-backlog.md",
+      "ownerSprint": "016",
+      "description": "Tracked security hardening work and its status."
+    },
+    {
+      "slug": "env-reference",
+      "title": "Environment variables",
+      "section": "ops",
+      "audience": "admin",
+      "source": "env-reference.md",
+      "ownerSprint": "016",
+      "description": "Every supported environment variable and its default."
+    },
+    {
+      "slug": "deployment",
+      "title": "Deployment guide",
+      "section": "ops",
+      "audience": "admin",
+      "source": "deployment.md",
+      "ownerSprint": "045",
+      "description": "Topologies, images, and rollout patterns for production."
+    },
+    {
+      "slug": "runbook",
+      "title": "Operations runbook",
+      "section": "ops",
+      "audience": "admin",
+      "source": "runbook.md",
+      "ownerSprint": "044",
+      "description": "Day-2 operations: health checks, diagnostics, common tasks."
+    },
+    {
+      "slug": "backup-restore",
+      "title": "Backup & restore",
+      "section": "ops",
+      "audience": "admin",
+      "source": "backup-restore.md",
+      "ownerSprint": "044",
+      "description": "Backup, restore, and disaster-recovery procedures."
+    },
+    {
+      "slug": "ha",
+      "title": "High availability topologies",
+      "section": "ops",
+      "audience": "admin",
+      "source": "ha.md",
+      "ownerSprint": "045",
+      "description": "High-availability deployment topologies."
+    },
+    {
+      "slug": "scaling",
+      "title": "Scaling notes",
+      "section": "ops",
+      "audience": "admin",
+      "source": "scaling.md",
+      "ownerSprint": "016",
+      "description": "Capacity limits and scaling guidance."
+    },
+    {
+      "slug": "alerting",
+      "title": "Alerting",
+      "section": "ops",
+      "audience": "admin",
+      "source": "alerting.md",
+      "ownerSprint": "044",
+      "description": "Alert rules and notification pipelines."
+    },
+    {
+      "slug": "logging",
+      "title": "Logging",
+      "section": "ops",
+      "audience": "admin",
+      "source": "logging.md",
+      "ownerSprint": "016",
+      "description": "Log formats, levels, and shipping."
+    },
+    {
+      "slug": "migrations",
+      "title": "Database migration policy",
+      "section": "ops",
+      "audience": "admin",
+      "source": "migrations.md",
+      "ownerSprint": "045",
+      "description": "Database migration policy and versioning."
+    },
+    {
+      "slug": "upgrade",
+      "title": "Upgrade notes",
+      "section": "ops",
+      "audience": "admin",
+      "source": "upgrade.md",
+      "ownerSprint": "043",
+      "description": "Upgrade paths and release compatibility."
+    },
+    {
+      "slug": "release-process",
+      "title": "Release process",
+      "section": "releases",
+      "audience": "admin",
+      "source": "release-process.md",
+      "ownerSprint": "045",
+      "description": "How releases are cut, signed, and published."
+    },
+    {
+      "slug": "release-gates",
+      "title": "Release gates",
+      "section": "releases",
+      "audience": "admin",
+      "source": "release-gates.md",
+      "ownerSprint": "045",
+      "description": "Go/no-go QA lines for tags and the first public launch."
+    },
+    {
+      "slug": "migration",
+      "title": "Migrating from Jira",
+      "section": "migration",
+      "audience": "authed",
+      "source": "migration.md",
+      "ownerSprint": "048",
+      "description": "Import projects, issues, and history from Jira."
+    },
+    {
+      "slug": "compatibility",
+      "title": "Jira API compatibility",
+      "section": "api",
+      "audience": "public",
+      "source": "compatibility.md",
+      "ownerSprint": "040",
+      "description": "Jira v2 REST coverage — what matches and what diverges."
+    },
+    {
+      "slug": "jira-divergences",
+      "title": "Known Jira divergences",
+      "section": "api",
+      "audience": "public",
+      "source": "jira-divergences.md",
+      "ownerSprint": "040",
+      "description": "Intentional differences from Jira behavior, and why."
+    },
+    {
+      "slug": "data-model",
+      "title": "Data model",
+      "section": "api",
+      "audience": "authed",
+      "source": "data-model.md",
+      "ownerSprint": "020",
+      "description": "Entities, relationships, and the Prisma schema."
+    },
+    {
+      "slug": "connect-agents",
+      "title": "Connect an agent or IDE",
+      "section": "api",
+      "audience": "public",
+      "source": "connect-agents.md",
+      "ownerSprint": "069",
+      "description": "One-URL MCP setup: OAuth clients vs PAT, per-client recipes, and the /mcp endpoint."
+    },
+    {
+      "slug": "mcp",
+      "title": "MCP server",
+      "section": "api",
+      "audience": "public",
+      "source": "mcp.md",
+      "ownerSprint": "047",
+      "description": "The trackforge-mcp tool surface: transports, auth, and the agent loop."
+    },
+    {
+      "slug": "roadmap",
+      "title": "Product roadmap",
+      "section": "overview",
+      "audience": "public",
+      "source": "roadmap.md",
+      "ownerSprint": "000",
+      "description": "Where the product is headed — milestones and shipped sprints."
+    },
+    {
+      "slug": "positioning",
+      "title": "Positioning vs the field",
+      "section": "overview",
+      "audience": "public",
+      "source": "positioning.md",
+      "ownerSprint": "000",
+      "description": "Verifiable differences vs Linear, Atlassian, and Plane."
+    },
+    {
+      "slug": "design-system",
+      "title": "Design system",
+      "section": "dev",
+      "audience": "authed",
+      "source": "design-system.md",
+      "ownerSprint": "042",
+      "description": "Tokens, components, and the TrackForge visual language."
+    },
+    {
+      "slug": "ux-backlog",
+      "title": "UX backlog",
+      "section": "dev",
+      "audience": "authed",
+      "source": "ux-backlog.md",
+      "ownerSprint": "042",
+      "description": "Planned UX improvements and their status."
+    },
+    {
+      "slug": "ux-parity-ledger",
+      "title": "UX parity ledger",
+      "section": "dev",
+      "audience": "authed",
+      "source": "ux-parity-ledger.md",
+      "ownerSprint": "042",
+      "description": "Per-screen parity tracking against Jira."
+    },
+    {
+      "slug": "jira-ux-fidelity-audit",
+      "title": "Jira UX fidelity audit",
+      "section": "dev",
+      "audience": "authed",
+      "source": "jira-ux-fidelity-audit.md",
+      "ownerSprint": "000",
+      "description": "Audit of UX-parity gaps across the app."
+    },
+    {
+      "slug": "architecture-review-agentic",
+      "title": "Architecture review (agentic)",
+      "section": "dev",
+      "audience": "admin",
+      "source": "architecture-review-agentic.md",
+      "ownerSprint": "047",
+      "description": "Structural review of the agent-facing architecture."
+    },
+    {
+      "slug": "pre-release-audit",
+      "title": "Pre-release security & correctness audit",
+      "section": "releases",
+      "audience": "admin",
+      "source": "pre-release-audit.md",
+      "ownerSprint": "065",
+      "description": "Findings and remediation status from the pre-release audit sweep."
+    },
+    {
+      "slug": "ui-release-readiness-audit",
+      "title": "UI release-readiness audit",
+      "section": "dev",
+      "audience": "admin",
+      "source": "ui-release-readiness-audit.md",
+      "ownerSprint": "065",
+      "description": "Static review of frontend release-readiness gaps."
+    }
+  ],
+  "sections": {
+    "overview": "Overview",
+    "user-guide": "User guide",
+    "admin": "Administration",
+    "ops": "Operations",
+    "migration": "Migration",
+    "api": "API reference",
+    "releases": "Releases",
+    "dev": "Development"
+  },
+  "sectionMeta": {
+    "overview": {
+      "description": "Start here — what TrackForge is and how to run it.",
+      "icon": "rocket"
+    },
+    "user-guide": {
+      "description": "Day-to-day work: issues, boards, search, automation.",
+      "icon": "book"
+    },
+    "admin": {
+      "description": "Workflows, permissions, identity, and security.",
+      "icon": "shield"
+    },
+    "ops": {
+      "description": "Deploy, back up, scale, and observe your instance.",
+      "icon": "server"
+    },
+    "migration": {
+      "description": "Bring your projects and history over from Jira.",
+      "icon": "swap"
+    },
+    "api": {
+      "description": "Jira-compatible REST, the OpenAPI reference, and extensions.",
+      "icon": "code"
+    },
+    "releases": {
+      "description": "How releases are produced and shipped.",
+      "icon": "tag"
+    },
+    "dev": {
+      "description": "Design system, UX backlog, and architecture reviews.",
+      "icon": "flask"
+    }
+  }
+}

@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>REST API explorer · TrackForge Docs</title>
+    <meta
+      name="description"
+      content="Interactive explorer for the TrackForge REST API — Jira v2-compatible surface plus agent-governance extensions, rendered from the live OpenAPI document."
+    />
+    <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: #161a1d;
+      }
+      .tf-back {
+        position: fixed;
+        z-index: 10000;
+        right: 14px;
+        bottom: 14px;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 8px 14px;
+        border-radius: 8px;
+        background: #0c66e4;
+        color: #fff;
+        font:
+          600 13px -apple-system,
+          BlinkMacSystemFont,
+          'Segoe UI',
+          Roboto,
+          sans-serif;
+        text-decoration: none;
+        box-shadow: 0 4px 14px rgba(9, 30, 66, 0.35);
+      }
+      .tf-back:hover {
+        background: #0055cc;
+      }
+    </style>
+  </head>
+  <body>
+    <a class="tf-back" href="../">← Back to docs</a>
+    <div id="app"></div>
+    <script src="./scalar.js"></script>
+    <script>
+      Scalar.createApiReference('#app', {
+        url: '../openapi.json', /* same dir depth — /openapi.json */
+        theme: 'kepler',
+        layout: 'modern',
+        showSidebar: true,
+        // "Ask AI" is Scalar's hosted agent — prompts + spec context go to
+        // proxy.scalar.com (free for public docs, terms acceptance in-UI).
+        // Set `agent: { disabled: true }` here to switch it off.
+        metaData: {
+          title: 'TrackForge REST API',
+          description:
+            'Jira v2-compatible REST surface plus agent-governance extensions.',
+        },
+        customCss:
+          ':root { --scalar-color-accent: #0c66e4; --scalar-button-1-color: #0c66e4; }',
+      });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,90 @@
+# 043 — production compose. Single-origin app; infra ports stay private (FR).
+# Usage: cp .env.example .env && edit secrets && docker compose -f docker-compose.prod.yml up -d
+name: trackforge
+
+services:
+  migrate:
+    image: ghcr.io/albertpa00/trackforge:${TF_TAG:-latest}
+    build:
+      context: .
+      dockerfile: apps/backend/Dockerfile
+    command: ["./node_modules/.bin/prisma", "migrate", "deploy", "--schema", "./prisma/schema.prisma"]
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://trackforge:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/trackforge
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  app:
+    image: ghcr.io/albertpa00/trackforge:${TF_TAG:-latest}
+    build:
+      context: .
+      dockerfile: apps/backend/Dockerfile
+      args:
+        TF_VERSION: ${TF_TAG:-dev}
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://trackforge:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/trackforge
+      REDIS_URL: redis://redis:6379
+      ATTACHMENT_STORAGE: ${ATTACHMENT_STORAGE:-fs}
+      S3_ENDPOINT: ${S3_ENDPOINT:-http://s3:9000}
+    ports:
+      - "${HTTP_PORT:-3000}:3000"
+    volumes:
+      - backups:/backups
+      - attachment_data:${ATTACHMENT_DIR:-/app/attachments}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      s3:
+        condition: service_started
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: trackforge
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: trackforge
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U trackforge"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+    # no host port — private by default (FR)
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    # no host port
+
+  # S3-compatible object store (RustFS — MinIO API-compatible drop-in; MinIO
+  # removed its public registry images Oct 2025). Private to the network; the
+  # app reaches it via S3_ENDPOINT. Set ATTACHMENT_STORAGE=s3 to enable.
+  s3:
+    image: rustfs/rustfs:latest
+    environment:
+      RUSTFS_ACCESS_KEY: ${S3_ACCESS_KEY:-trackforge}
+      # 065 audit A3 — no published default for the object-store credential in
+      # prod; compose fails fast instead of booting with a known secret.
+      RUSTFS_SECRET_KEY: ${S3_SECRET_KEY:?S3_SECRET_KEY is required — generate one (openssl rand -base64 32)}
+      RUSTFS_CONSOLE_ENABLE: "false"
+    volumes:
+      - s3_data:/data
+    restart: unless-stopped
+    # no host port — private by default (FR)
+
+volumes:
+  postgres_data:
+  s3_data:
+  backups:
+  attachment_data:

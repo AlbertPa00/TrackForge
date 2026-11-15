@@ -1,0 +1,45 @@
+# 044 US2 — opt-in monitoring profile. Layer ON TOP of the prod file:
+#   docker compose -f docker-compose.prod.yml -f docker-compose.monitoring.yml up -d
+# Prometheus scrapes app /metrics on the private network; Grafana serves the
+# checked-in dashboards. Core runs fine without any of these services.
+name: trackforge
+
+services:
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --config.expand-env=true
+      - --storage.tsdb.retention.time=30d
+    environment:
+      METRICS_BEARER: ${METRICS_BEARER:-}
+    volumes:
+      - ./deploy/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./deploy/monitoring/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus_data:/prometheus
+    depends_on:
+      app:
+        condition: service_started
+    restart: unless-stopped
+    # no host port — reach it via the grafana datasource or compose exec
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:?set GRAFANA_PASSWORD in .env}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./deploy/monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "${GRAFANA_PORT:-3001}:3000"
+    depends_on:
+      prometheus:
+        condition: service_started
+    restart: unless-stopped
+
+volumes:
+  prometheus_data:
+  grafana_data:

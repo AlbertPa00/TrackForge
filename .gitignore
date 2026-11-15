@@ -64,3 +64,7 @@ apps/backend/backups/
 
 # Ad-hoc data dumps / scratch exports
 eg*.json
+
+# e2e screenshot artifacts
+shot-*.png
+apps/frontend/undefined/

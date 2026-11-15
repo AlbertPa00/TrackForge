@@ -15,6 +15,7 @@ RUN pnpm install --frozen-lockfile
 COPY . .
 RUN pnpm --filter backend db:generate \
  && pnpm --filter frontend build \
+ && pnpm --filter trackforge-mcp build \
  && pnpm --filter backend build \
  && pnpm --filter backend deploy --prod /out \
  && cp -r apps/backend/prisma /out/prisma \

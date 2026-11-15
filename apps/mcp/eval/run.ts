@@ -119,7 +119,7 @@ async function main() {
   const run = `eval-${Date.now().toString(36)}`; // unique marker per run (search is paged)
 
   // 1. whoami → principal + scopes
-  const me = await tf.call<{ user: { accountId: string }; scopes: string[] }>('GET', '/api/internal/auth/whoami');
+  const me = await tf.call<{ user: { accountId: string; displayName?: string; emailAddress?: string }; scopes: string[] }>('GET', '/api/internal/auth/whoami');
   check('whoami returns principal', !!me.user?.accountId && Array.isArray(me.scopes));
 
   // 2. list projects — self-provision a sandbox on a fresh instance
@@ -184,9 +184,14 @@ async function main() {
     'GET', `/rest/api/2/issue/${issue.key}`, { query: { fields: 'assignee' } });
   check('assign_issue to self', assigned.fields.assignee?.accountId === me.user.accountId);
 
-  // 12. find_users resolves the user
+  // 12. find_users resolves the user — user search requires a ≥2-char query
+  // (064 US6 anti-enumeration), so look up the token's own principal.
+  const uname =
+    [me.user.displayName, me.user.emailAddress]
+      .flatMap((v) => (v ?? '').split(/[\s@.]+/))
+      .find((w) => w.length >= 2) ?? 'trackforge';
   const users = await tf.call<{ accountId: string }[]>('GET', '/rest/api/2/user/search',
-    { query: { query: '', project: pk } });
+    { query: { query: uname, project: pk } });
   check('find_users returns users', users.length > 0);
 
   // 13. bulk create + per-item errors — dryRun first previews, writes nothing (052)
@@ -515,8 +520,16 @@ async function main() {
         const selfApprove = await gated.call('POST', `/api/internal/proposals/${parked.proposalId}/approve`)
           .then(() => 'allowed').catch((e) => (e as { status?: number }).status === 403 ? 'denied' : 'other');
         check('token cannot self-approve', selfApprove === 'denied');
+        // 065 B2 — review requires a distinct human with ADMINISTER_PROJECTS
+        // or site admin; the proposing user's own session is denied by design.
+        const reviewerEmail = `${run}-reviewer@eval.local`;
+        const reviewer = await tf.call<{ accountId: string }>('POST', '/api/internal/users', {
+          body: { email: reviewerEmail, displayName: `Eval Reviewer ${run}`, password: 'eval-pass-012', isAdmin: true },
+        }).catch(() => null);
+        check('create reviewer admin', !!reviewer?.accountId);
+        const reviewerCookie = reviewer?.accountId ? await login(reviewerEmail, 'eval-pass-012') : '';
         const approved = await sessionCall<{ status: string }>(
-          'POST', `/api/internal/proposals/${parked.proposalId}/approve`, cookie);
+          'POST', `/api/internal/proposals/${parked.proposalId}/approve`, reviewerCookie);
         check('session approves proposal', approved.status === 200 && approved.body.status === 'approved');
         const applied = await tf.call<Issue>('GET', `/rest/api/2/issue/${gateIssue.key}`);
         check('approved write applied', (applied.fields as { summary?: string })?.summary === `${run} gated rename`);

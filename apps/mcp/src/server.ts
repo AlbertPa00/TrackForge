@@ -70,28 +70,19 @@ export async function createMcpServer(token: string, opts: CreateMcpOptions): Pr
 
 // ---------- 070 — pooled stateless HTTP servers ----------
 // Every POST used to pay a full createMcpServer(): ~140 tool registrations
-// and their zod schemas rebuilt per request, plus a fresh transport. Servers
-// are principal-agnostic (the client binds per request via withClient), so
-// connected {server, transport} pairs pool cleanly per toolset variant.
+// and their zod schemas rebuilt per request, plus a fresh transport. Only
+// McpServers pool — the SDK's stateless transport is single-use ("Stateless
+// transport cannot be reused across requests"), so each request binds a new
+// StreamableHTTPServerTransport to a checked-out server. Servers are
+// principal-agnostic (the client binds per request via withClient), so they
+// pool cleanly per toolset variant.
 //
 // No resources/subscribe on pooled servers: stateless mode has no session to
 // deliver notifications on anyway, and a lingering per-server subscription
 // set would leak one principal's event stream to the next request's
 // principal.
-interface PooledEntry {
-  server: McpServer;
-  transport: StreamableHTTPServerTransport;
-}
-
 const POOL_MAX = Math.max(1, Number(process.env.MCP_SERVER_POOL ?? 32));
-const pools: Record<'full' | 'ro', PooledEntry[]> = { full: [], ro: [] };
-
-async function buildPooledEntry(write: boolean): Promise<PooledEntry> {
-  const server = buildServer(write, false);
-  const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
-  await server.connect(transport);
-  return { server, transport };
-}
+const pools: Record<'full' | 'ro', McpServer[]> = { full: [], ro: [] };
 
 /** Test/metrics hook. */
 export function mcpPoolSize(): { full: number; ro: number } {
@@ -119,18 +110,23 @@ export async function handleMcpHttpRequest(
     }
   }
   const variant = write ? 'full' : 'ro';
-  const entry = pools[variant].pop() ?? (await buildPooledEntry(write));
+  const server = pools[variant].pop() ?? buildServer(write, false);
+  const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+  await server.connect(transport);
   let reuse = true;
   try {
-    await withClient(tf, () => entry.transport.handleRequest(req, res, parsedBody));
+    await withClient(tf, () => transport.handleRequest(req, res, parsedBody));
   } catch (e) {
     // A mid-flight failure can leave per-request state on the transport —
     // retire the pair rather than risk cross-request bleed.
     reuse = false;
     throw e;
   } finally {
-    if (reuse && pools[variant].length < POOL_MAX) pools[variant].push(entry);
-    else await entry.server.close().catch(() => undefined);
+    // Single-use transport detaches here (its close clears the server's bound
+    // transport), leaving the server clean for the next checkout.
+    await transport.close().catch(() => undefined);
+    if (reuse && pools[variant].length < POOL_MAX) pools[variant].push(server);
+    else await server.close().catch(() => undefined);
   }
 }
 

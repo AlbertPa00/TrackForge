@@ -46,7 +46,7 @@ jobs:
           DOCS_BASE: /${{ github.event.repository.name }}/
         run: pnpm docs:build
 
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: docs/.vitepress/dist
 

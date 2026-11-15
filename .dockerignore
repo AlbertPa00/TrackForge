@@ -6,9 +6,10 @@ node_modules
 **/*.test.ts
 **/*.test.tsx
 **/tests
-docs/**
-!docs/package.json
 *.md
+apps/backend/attachments
+backups
+eg*.json
 !README.md
 .env
 .env.*

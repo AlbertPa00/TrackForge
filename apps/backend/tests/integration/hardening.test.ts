@@ -12,7 +12,11 @@ async function seedProject(key: string) {
 async function createIssue(projectKey: string, summary: string) {
   return request(app)
     .post('/rest/api/2/issue')
-    .send({ fields: { project: { key: projectKey }, summary } });
+    .send({ fields: { project: { key: projectKey }, summary } })
+    // 20-way bursts occasionally lose a localhost connect() to loop/backlog
+    // stalls on loaded CI boxes. Retry only when no response ever arrived —
+    // the create can't have run, so it can't double-execute.
+    .retry(3, (err, res) => !res && !!err);
 }
 
 describe('Issue number integrity', () => {

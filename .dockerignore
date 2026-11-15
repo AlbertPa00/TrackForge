@@ -6,7 +6,7 @@ node_modules
 **/*.test.ts
 **/*.test.tsx
 **/tests
-docs
+docs/**
 !docs/package.json
 *.md
 !README.md

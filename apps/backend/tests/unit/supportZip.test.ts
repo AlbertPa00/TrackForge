@@ -75,6 +75,8 @@ describe('044 support zip', () => {
     expect(cfg.SESSION_SECRET).toBe('<set>');
     expect(cfg.DATABASE_URL).toBe('<set>');
     expect(cfg.SMTP_PASS).toBe('<set>');
-    expect(cfg.PORT).toMatch(/^\d+$/);
+    // PORT is optional — absent in minimal envs, so its sanitized form can be
+    // '<unset>' as well as digits.
+    expect(cfg.PORT).toMatch(/^(\d+|<unset>)$/);
   });
 });

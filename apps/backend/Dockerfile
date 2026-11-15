@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 # 043 — trackforge-app: single-origin image (backend serves the built frontend).
 # Build from the REPO ROOT:  docker build -f apps/backend/Dockerfile -t trackforge .
-FROM node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293 AS build
+FROM node:26-alpine@sha256:6bd9ab43c0ec0190ca7b2d193906cb8b7edf6e7f4afa43ddeccd6452710bffb5 AS build
 # openssl needed BEFORE prisma generate so it detects musl-openssl-3.x (not
 # the default 1.1.x engine, which won't load on alpine 3.20+).
 RUN apk add --no-cache openssl && corepack enable && corepack prepare pnpm@9.15.0 --activate
@@ -23,7 +23,7 @@ RUN pnpm --filter backend db:generate \
 # pnpm deploy --prod doesn't carry the generated client (.prisma/) — regenerate
 # it inside /out so require('.prisma/client/default') resolves at runtime.
 
-FROM node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293 AS runtime
+FROM node:26-alpine@sha256:6bd9ab43c0ec0190ca7b2d193906cb8b7edf6e7f4afa43ddeccd6452710bffb5 AS runtime
 ARG TF_VERSION=0.0.0-dev
 ARG TF_BUILD_DATE
 ARG TF_BUILD_NUMBER=1

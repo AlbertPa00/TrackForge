@@ -39,7 +39,7 @@
     "multer": "^2.5.0",
     "nodemailer": "^10.5.0",
     "pino": "9.5.0",
-    "prisma": "^5.15.0",
+    "prisma": "^7.10.1",
     "sanitize-html": "^2.18.2",
     "sharp": "^0.35.5",
     "trackforge-mcp": "workspace:*",

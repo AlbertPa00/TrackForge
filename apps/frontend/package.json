@@ -16,8 +16,13 @@
   "dependencies": {
     "@tanstack/react-query": "^5.107.1",
     "dompurify": "^3",
+<<<<<<< HEAD
     "i18next": "^27.1.1",
     "marked": "^15",
+=======
+    "i18next": "^27.0.1",
+    "marked": "^18",
+>>>>>>> origin/dependabot/npm_and_yarn/marked-18.2.0
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
     "react-i18next": "^18.0.1",

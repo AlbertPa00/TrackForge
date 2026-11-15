@@ -26,16 +26,10 @@
   "devDependencies": {
     "@axe-core/playwright": "^4.14.0",
     "@playwright/test": "^1.65.0",
-    "@testing-library/dom": "9.3.4",
-<<<<<<< HEAD
+    "@testing-library/dom": "^10.4.0",
     "@testing-library/jest-dom": "7.0.1",
-    "@testing-library/react": "14.3.1",
-    "@testing-library/user-event": "14.6.10",
-=======
-    "@testing-library/jest-dom": "6.4.8",
     "@testing-library/react": "16.3.3",
-    "@testing-library/user-event": "14.5.2",
->>>>>>> origin/dependabot/npm_and_yarn/testing-library/react-16.3.3
+    "@testing-library/user-event": "14.6.10",
     "@types/react": "^18.3.0",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.7.0",

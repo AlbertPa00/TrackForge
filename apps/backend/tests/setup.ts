@@ -1,4 +1,5 @@
 import { beforeEach, afterAll } from 'vitest';
+import http from 'node:http';
 import { prisma } from '../src/prisma.js';
 import {
   seedMetadata,
@@ -10,6 +11,13 @@ import {
 import { getDurableRunner } from '../src/lib/jobs.js';
 import { invalidateJqlCtxCache } from '../src/jql/ctxCache.js';
 import { ensureTestAuth } from './request.js';
+
+// Every supertest request used to open AND close its own loopback socket
+// (globalAgent has keepAlive: false) — thousands of TIME_WAIT sockets per
+// suite, and under load a connect() occasionally timed out (ETIMEDOUT, the
+// "concurrent creates" flake). One keep-alive pool reuses sockets instead.
+const keepAliveAgent = new http.Agent({ keepAlive: true, maxSockets: 64 });
+http.globalAgent = keepAliveAgent;
 
 /**
  * Fast wipe: one statement, one implicit transaction. session_replication_role
@@ -77,5 +85,6 @@ beforeEach(async () => {
 });
 
 afterAll(async () => {
+  keepAliveAgent.destroy(); // pooled keep-alive sockets hold the event loop
   await prisma.$disconnect();
 });

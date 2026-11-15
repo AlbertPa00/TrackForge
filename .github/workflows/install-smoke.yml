@@ -62,7 +62,16 @@ jobs:
 
       - name: Infra ports stay private
         run: |
-          ! docker compose -f docker-compose.prod.yml ps --format json | grep -E '"(5432|6379|9000)/(tcp|udp)"'
+          # `docker compose ps --format json` also reports EXPOSE metadata
+          # ("Ports":"5432/tcp"), which is not a host binding — assert on real
+          # published mappings via `docker port` instead.
+          leaked=""
+          for svc in postgres redis s3; do
+            cid=$(docker compose -f docker-compose.prod.yml ps -q "$svc" 2>/dev/null || true)
+            [ -n "$cid" ] && leaked="$leaked$(docker port "$cid" 2>/dev/null || true)"
+          done
+          echo "host-published infra mappings: ${leaked:-none}"
+          ! echo "$leaked" | grep -E '(5432|6379|9000)/(tcp|udp)'
 
       - name: Teardown
         if: always()

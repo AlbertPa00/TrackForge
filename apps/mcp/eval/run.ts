@@ -20,7 +20,13 @@ const tf = new TrackForgeClient(URL_, TOKEN ?? 'no-token');
 let pass = 0, fail = 0;
 function check(name: string, cond: boolean, detail = '') {
   if (cond) { pass++; console.log(`  ok   ${name}`); }
-  else { fail++; console.log(`  FAIL ${name} ${detail}`); }
+  else {
+    fail++;
+    console.log(`  FAIL ${name} ${detail}`);
+    // GitHub Actions picks this up as a check-run annotation — the failure is
+    // then visible on the run without opening raw logs.
+    if (process.env.GITHUB_ACTIONS) console.log(`::error file=apps/mcp/eval/run.ts::eval check failed: ${name}`);
+  }
 }
 
 /**

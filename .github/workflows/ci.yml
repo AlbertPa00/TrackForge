@@ -28,7 +28,7 @@ jobs:
           --health-retries 10
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # Migration-compat diffs ${base}...HEAD — a shallow clone has no
           # merge-base on single-commit branches (dependabot, PRs).

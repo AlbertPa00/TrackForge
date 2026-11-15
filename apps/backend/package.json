@@ -35,7 +35,7 @@
     "ioredis": "5.10.0",
     "jsonwebtoken": "^9.0.3",
     "ldapts": "7.3.0",
-    "marked": "^15",
+    "marked": "^18",
     "multer": "^2.5.0",
     "nodemailer": "^10.4.0",
     "pino": "9.5.0",

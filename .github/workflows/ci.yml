@@ -111,6 +111,10 @@ jobs:
             -d '{"name":"ci-eval","scopes":["read","write","admin"]}' \
             | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>process.stdout.write(JSON.parse(d).secret))")
           echo "::add-mask::$SECRET"
+          if [[ "$SECRET" != tfp_* ]]; then
+            echo "::error::token mint returned no tfp_ secret (got '${SECRET}')"
+            exit 1
+          fi
           echo "TRACKFORGE_TOKEN=$SECRET" >> "$GITHUB_ENV"
 
       - name: Agent API eval (MCP surface)

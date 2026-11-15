@@ -118,6 +118,7 @@ async function main() {
   sourceDriftChecks();
   if (!TOKEN) {
     console.error('\nTRACKFORGE_TOKEN (tfp_* PAT) is required for the REST suite — source checks above still counted.');
+    if (process.env.GITHUB_ACTIONS) console.log('::error file=apps/mcp/eval/run.ts::TRACKFORGE_TOKEN missing — REST suite skipped');
     console.log(`\n${pass} passed, ${fail} failed.`);
     process.exit(fail ? 1 : 0);
   }
@@ -916,4 +917,9 @@ async function main() {
   process.exit(fail ? 1 : 0);
 }
 
-main().catch((e) => { console.error(e); process.exit(1); });
+main().catch((e) => {
+  if (process.env.GITHUB_ACTIONS)
+    console.log(`::error file=apps/mcp/eval/run.ts::eval crashed: ${String(e).split('\n')[0]}`);
+  console.error(e);
+  process.exit(1);
+});

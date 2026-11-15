@@ -44,7 +44,7 @@
     "sharp": "^0.35.5",
     "trackforge-mcp": "workspace:*",
     "yauzl": "^3.4.0",
-    "zod": "^3.25.76",
+    "zod": "^4.6.7",
     "zod-to-json-schema": "3.25.2"
   },
   "devDependencies": {

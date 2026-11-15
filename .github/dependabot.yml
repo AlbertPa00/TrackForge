@@ -24,3 +24,9 @@ updates:
   - package-ecosystem: docker
     directory: /apps/backend
     schedule: { interval: weekly }
+    ignore:
+      # Node 25+ unbundles corepack — the Dockerfile pins it for pnpm, and
+      # verify (which doesn't build the image) would green-light a broken
+      # bump. Stay on the 24 LTS line until the image drops corepack.
+      - dependency-name: "node"
+        versions: [">=25"]

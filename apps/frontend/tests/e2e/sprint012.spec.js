@@ -6,7 +6,7 @@ async function login(page) {
   await page.goto('http://localhost:5173/login');
   await page.getByPlaceholder('Email').fill(CREDS.email);
   await page.getByPlaceholder('Password').fill(CREDS.password);
-  await page.getByRole('button', { name: 'Log in' }).click();
+  await page.getByRole('button', { name: 'Log in', exact: true }).click();
   await expect(page).toHaveURL('http://localhost:5173/');
 }
 
@@ -34,7 +34,7 @@ test('command palette opens on Ctrl+K', async ({ page }) => {
 test('issue detail shows AI actions panel', async ({ page }) => {
   await login(page);
   // Open the project navigator and click through to an issue.
-  await page.goto('http://localhost:5173/projects/TF');
+  await page.goto('http://localhost:5173/projects/SCRUM/issues');
   await page.locator('table tbody tr a').first().click();
   await expect(page).toHaveURL(/\/browse\/[A-Z]+-\d+/);
   await expect(page.getByRole('button', { name: 'Summarize' })).toBeVisible();

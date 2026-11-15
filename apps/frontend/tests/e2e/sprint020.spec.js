@@ -8,7 +8,7 @@ async function login(page) {
   await page.goto('http://localhost:5173/login');
   await page.getByPlaceholder('Email').fill(CREDS.email);
   await page.getByPlaceholder('Password').fill(CREDS.password);
-  await page.getByRole('button', { name: 'Log in' }).click();
+  await page.getByRole('button', { name: 'Log in', exact: true }).click();
   await expect(page).toHaveURL('http://localhost:5173/');
 }
 
@@ -32,7 +32,7 @@ test('journey: upload an attachment on the issue page and see it listed', async 
   await page.locator('input[type=file]').setInputFiles({
     name: 'hello.txt', mimeType: 'text/plain', buffer: Buffer.from('journey bytes'),
   });
-  await expect(page.getByText('hello.txt')).toBeVisible({ timeout: 10000 });
+  await expect(page.getByRole('link', { name: 'hello.txt' })).toBeVisible({ timeout: 10000 });
 });
 
 test('journey: fixVersion on issue flows into the release hub and releases', async ({ page }) => {
@@ -50,6 +50,6 @@ test('journey: fixVersion on issue flows into the release hub and releases', asy
   await page.goto(`http://localhost:5173/projects/${key}/releases`);
   await expect(page.getByText('v1.0-journey')).toBeVisible();
   // Fix-versioned issue shows under the version card's Unresolved bucket.
-  await page.getByText('v1.0-journey').click();
+  await page.getByRole('button', { name: 'Expand' }).first().click();
   await expect(page.getByText(issue.key)).toBeVisible();
 });

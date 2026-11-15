@@ -69,11 +69,10 @@ test('SC-003: palette runs a deterministic local command with no AI round-trip',
   await page.goto('http://localhost:5173/projects/SCRUM/backlog');
   await page.waitForTimeout(800); // let the keydown listener attach post-hydration
   const input = page.getByPlaceholder(/Type a command/);
-  // Ctrl+K is a one-shot toggle — retry once if the first press raced hydration.
-  await page.keyboard.press('Control+k');
-  if (!(await input.isVisible().catch(() => false))) {
-    await page.waitForTimeout(500);
+  // Ctrl+K is a one-shot toggle — poll a few presses; the first can race hydration.
+  for (let i = 0; i < 5 && !(await input.isVisible().catch(() => false)); i++) {
     await page.keyboard.press('Control+k');
+    await page.waitForTimeout(400);
   }
   await expect(input).toBeVisible();
   await input.fill('go board');

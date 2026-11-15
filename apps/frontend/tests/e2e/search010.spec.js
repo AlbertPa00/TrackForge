@@ -6,7 +6,7 @@ async function login(page) {
   await page.goto('http://localhost:5173/login');
   await page.getByPlaceholder('Email').fill(CREDS.email);
   await page.getByPlaceholder('Password').fill(CREDS.password);
-  await page.getByRole('button', { name: 'Log in' }).click();
+  await page.getByRole('button', { name: 'Log in', exact: true }).click();
   await expect(page).toHaveURL('http://localhost:5173/');
 }
 
@@ -45,22 +45,23 @@ test('basic ⇄ jql round-trip', async ({ page }) => {
 });
 
 test('filters page + save-as flow', async ({ page }) => {
+  const filterName = `E2E open issues ${Date.now().toString(36)}`;
   await login(page);
   // save a filter from advanced search
   await page.goto('http://localhost:5173/issues?mode=jql&jql=' + encodeURIComponent('statusCategory != Done'));
   await page.waitForTimeout(800);
   await page.getByRole('button', { name: /Save as/ }).click();
-  await page.getByPlaceholder('e.g. My open bugs').fill('E2E open issues');
+  await page.getByPlaceholder('e.g. My open bugs').fill(filterName);
   await page.getByRole('button', { name: 'Save filter' }).click();
   await page.waitForTimeout(600);
   // filters list shows it
   await page.goto('http://localhost:5173/filters');
-  await expect(page.getByText('E2E open issues')).toBeVisible();
+  await expect(page.getByText(filterName)).toBeVisible();
   await page.screenshot({ path: 'test-results/filters.png', fullPage: true });
-  // clean up
-  page.on('dialog', (d) => d.accept());
-  await page.getByRole('button', { name: 'Delete' }).click();
-  await expect(page.getByText('E2E open issues')).not.toBeVisible();
+  // clean up — row Delete opens a confirm dialog, confirm there
+  await page.getByRole('row', { name: filterName }).getByRole('button', { name: 'Delete' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Delete' }).click();
+  await expect(page.getByRole('button', { name: filterName })).toHaveCount(0);
 });
 
 test('top-nav filters menu + global search', async ({ page }) => {

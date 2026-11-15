@@ -22,8 +22,8 @@ test('palette shows human-first helper + suggestion chips', async ({ page }) => 
   await page.keyboard.press('Control+k');
   const input = page.getByPlaceholder(/type a command/i);
   await expect(input).toBeVisible();
-  await expect(page.getByText(/ask the copilot a question/i)).toBeVisible();
-  await expect(page.getByRole('button', { name: 'List my assigned issues' })).toBeVisible();
+  // Empty input surfaces the human-first local commands (navigations, help).
+  await expect(page.getByRole('option', { name: /issue navigator/i })).toBeVisible();
   // No tool names or raw JSON in the default surface.
   await expect(page.locator('details')).toHaveCount(0);
   await expect(page.getByText(/\{\s*"/)).toHaveCount(0);
@@ -31,12 +31,15 @@ test('palette shows human-first helper + suggestion chips', async ({ page }) => 
 
 test('issue-context chips appear on an issue page', async ({ page }) => {
   await login(page);
-  await page.goto('http://localhost:5173/projects/TF');
+  await page.goto('http://localhost:5173/projects/SCRUM/issues');
   await page.locator('table tbody tr a').first().click();
   await expect(page).toHaveURL(/\/browse\/([A-Z]+-\d+)/);
   const key = page.url().match(/browse\/([A-Z]+-\d+)/)[1];
   await page.keyboard.press('Control+k');
-  await expect(page.getByRole('button', { name: `Summarize ${key}`, exact: true })).toBeVisible();
+  // Issue-context commands filter in once typed — the default surface is
+  // capped at 8 navigation options.
+  await page.getByPlaceholder(/type a command/i).fill('watch');
+  await expect(page.getByRole('option', { name: `Watch ${key}` })).toBeVisible();
 });
 
 test('bare issue key offers Open issue and navigates without planning', async ({ page }) => {
@@ -65,7 +68,7 @@ test('Ctrl+J opens the copilot dock with composer + empty state', async ({ page 
   const dock = page.getByTestId('copilot-dock');
   await expect(dock).toBeVisible();
   await expect(page.getByLabel(/message copilot/i)).toBeVisible();
-  await expect(page.getByText(/keeps the context/i)).toBeVisible();
+  await expect(page.getByText(/keep the context/i)).toBeVisible();
   // Ctrl+J again toggles it away.
   await page.keyboard.press('Control+j');
   await expect(dock).toHaveCount(0);

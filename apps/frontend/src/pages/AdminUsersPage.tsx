@@ -486,7 +486,7 @@ export default function AdminUsersPage() {
       </div>
 
       {users.isLoading && (
-        <div className="bg-atl-paper border border-atl-n-30 rounded" aria-label="Loading users">
+        <div className="bg-atl-paper border border-atl-n-30 rounded" role="status" aria-label="Loading users">
           {[0, 1, 2, 3, 4].map((r) => (
             <div key={r} className="flex items-center gap-3 px-4 py-3 border-b border-atl-n-20 last:border-0">
               <div className="h-6 w-6 rounded-full bg-atl-n-30 animate-pulse" />

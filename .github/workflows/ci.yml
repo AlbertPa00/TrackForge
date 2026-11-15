@@ -100,6 +100,10 @@ jobs:
           cd apps/backend
           nohup pnpm dev > /tmp/backend.log 2>&1 &
           for i in $(seq 1 30); do curl -sf http://localhost:3000/rest/api/2/status && break || sleep 1; done
+        env:
+          # e2e performs a UI login per test (~50/min from one IP) — the auth
+          # limit is a deployment control, not a correctness gate.
+          AUTH_RATE_LIMIT: "0"
 
       - name: Mint CI agent token
         run: |

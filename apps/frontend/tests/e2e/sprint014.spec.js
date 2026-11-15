@@ -8,7 +8,7 @@ async function login(page) {
   await page.goto('http://localhost:5173/login');
   await page.getByPlaceholder('Email').fill(CREDS.email);
   await page.getByPlaceholder('Password').fill(CREDS.password);
-  await page.getByRole('button', { name: 'Log in' }).click();
+  await page.getByRole('button', { name: 'Log in', exact: true }).click();
   await expect(page).toHaveURL('http://localhost:5173/');
 }
 
@@ -39,7 +39,7 @@ test('issue detail renders + edits a custom field row', async ({ page }) => {
   });
   const field = await res.json();
   const issueRes = await ctx.post('/rest/api/2/issue', {
-    data: { fields: { project: { key: 'TF' }, summary: `cf e2e ${name}`, [field.id]: { value: 'S1' } } },
+    data: { fields: { project: { key: 'SCRUM' }, summary: `cf e2e ${name}`, [field.id]: { value: 'S1' } } },
   });
   const issue = await issueRes.json();
 
@@ -50,7 +50,7 @@ test('issue detail renders + edits a custom field row', async ({ page }) => {
   // Edit to S2 via the inline select — the CF row is a DetailRow (dt label + dd editor).
   const dd = page.locator('dt', { hasText: name }).locator('..').locator('dd');
   await dd.getByRole('button').first().click();
-  await dd.locator('select').selectOption({ label: 'S2' });
+  await dd.getByRole('option', { name: 'S2' }).click();
   await expect(page.getByText('S2').first()).toBeVisible();
   await page.screenshot({ path: 'shot-issue-cf.png', fullPage: true });
 });
@@ -62,7 +62,7 @@ test('create dialog surfaces custom fields from createmeta', async ({ page }) =>
     data: { name, type: 'select', context: { options: ['Prod', 'Stage'] } },
   });
   await login(page);
-  await page.goto('http://localhost:5173/projects/TF');
+  await page.goto('http://localhost:5173/projects/SCRUM');
   await page.getByRole('button', { name: /create/i }).first().click();
   await expect(page.getByText(name).first()).toBeVisible();
   await page.screenshot({ path: 'shot-create-cf.png', fullPage: true });

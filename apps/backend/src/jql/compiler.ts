@@ -988,16 +988,19 @@ async function compileCondition(ctx: Ctx, c: JqlClauseCondition): Promise<Where>
           continue;
         }
         // Jira takes the sprint id; we also accept the name or per-board sequence.
+        // Names/sequences aren't globally unique ("Sprint 1" exists on every
+        // board) — resolve to ALL matches so `sprint = X AND project = Y`
+        // intersects correctly.
         const raw = operandText(i, field);
         const numeric = Number.isInteger(Number(raw)) ? [{ sequence: Number(raw) }] : [];
-        const sprint = await prisma.sprint.findFirst({
+        const sprints = await prisma.sprint.findMany({
           where: {
             OR: [{ id: raw }, { name: { equals: raw, mode: 'insensitive' } }, ...numeric],
           },
           select: { id: true },
         });
-        if (!sprint) throw valueError(raw, field);
-        ids.push(sprint.id);
+        if (!sprints.length) throw valueError(raw, field);
+        ids.push(...sprints.map((s) => s.id));
       }
       return sprintMembershipWhere(ids, listMode, negated);
     }
@@ -1016,12 +1019,13 @@ async function compileCondition(ctx: Ctx, c: JqlClauseCondition): Promise<Where>
           continue;
         }
         const raw = operandText(i, field);
-        const c = await prisma.component.findFirst({
+        // Same-named components can exist in multiple projects — match all.
+        const cs = await prisma.component.findMany({
           where: { OR: [{ id: raw }, { name: { equals: raw, mode: 'insensitive' } }] },
           select: { id: true },
         });
-        if (!c) throw valueError(raw, field);
-        ids.push(c.id);
+        if (!cs.length) throw valueError(raw, field);
+        ids.push(...cs.map((c) => c.id));
       }
       const nonNull = ids.filter((v): v is string => v !== null);
       const hasEmpty = ids.includes(null);
@@ -1049,12 +1053,13 @@ async function compileCondition(ctx: Ctx, c: JqlClauseCondition): Promise<Where>
           continue;
         }
         const raw = operandText(i, field);
-        const v = await prisma.version.findFirst({
+        // Same-named versions can exist in multiple projects — match all.
+        const vs = await prisma.version.findMany({
           where: { OR: [{ id: raw }, { name: { equals: raw, mode: 'insensitive' } }] },
           select: { id: true },
         });
-        if (!v) throw valueError(raw, field);
-        ids.push(v.id);
+        if (!vs.length) throw valueError(raw, field);
+        ids.push(...vs.map((v) => v.id));
       }
       const nonNull = ids.filter((v): v is string => v !== null);
       const hasEmpty = ids.includes(null);
@@ -1203,12 +1208,12 @@ async function resolveHistoryVals(ctx: Ctx, field: string, items: JqlOperand[]):
       v.contains = true;
       for (const i of lit) {
         const raw = operandText(i, field);
-        const ver = await prisma.version.findFirst({
+        const vers = await prisma.version.findMany({
           where: { OR: [{ id: raw }, { name: { equals: raw, mode: 'insensitive' } }] },
           select: { id: true },
         });
-        if (!ver) throw valueError(raw, field);
-        v.ids.push(ver.id);
+        if (!vers.length) throw valueError(raw, field);
+        v.ids.push(...vers.map((x) => x.id));
         v.strings.push(raw);
       }
       return v;
@@ -1218,12 +1223,12 @@ async function resolveHistoryVals(ctx: Ctx, field: string, items: JqlOperand[]):
       for (const i of lit) {
         const raw = operandText(i, field);
         const numeric = Number.isInteger(Number(raw)) ? [{ sequence: Number(raw) }] : [];
-        const s = await prisma.sprint.findFirst({
+        const ss = await prisma.sprint.findMany({
           where: { OR: [{ id: raw }, { name: { equals: raw, mode: 'insensitive' } }, ...numeric] },
           select: { id: true },
         });
-        if (!s) throw valueError(raw, field);
-        v.ids.push(s.id);
+        if (!ss.length) throw valueError(raw, field);
+        v.ids.push(...ss.map((x) => x.id));
         v.strings.push(raw);
       }
       return v;

@@ -9,8 +9,6 @@ name: deploy
 # run blocks for whatever executor you use. DB only rolls forward (migrations.md).
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
     inputs:
       tag:

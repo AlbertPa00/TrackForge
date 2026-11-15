@@ -81,6 +81,9 @@ first admin is created.
 | `DEV_WEBHOOK_RATE_LIMIT` | `600` | Requests/min per IP on the `/api/internal/dev` provider receivers |
 | `SCIM_RATE_LIMIT` | `600` | Requests/min per IP on `/scim/v2` |
 | `AGENT_SESSION_STALE_MS` | `1800000` | Agent sessions idle longer than this are swept to `blocked`; expired questions fail |
+| `TOKEN_CACHE_TTL_MS` | `30000` | PAT lookup cache lifetime — a revoked token stays accepted at most this long |
+| `TOKEN_TOUCH_INTERVAL_MS` | `300000` | Min interval between `lastUsedAt` writes per token |
+| `TOKEN_CACHE_MAX` | `10000` | Max cached principals in the token lookup LRU |
 | `TF_DISABLE_UI_RESTORE` | unset | Set to hide the in-UI restore affordance (restore stays CLI/API-only) |
 | `TRACKFORGE_SECRET_REF_ALLOW` | unset | Comma-separated env-name allowlist for `secretRef` fields (imports/OAuth) — unset denies all refs |
 | `DOCS_DIR` | repo `docs/` | Override the directory served by the docs surface |

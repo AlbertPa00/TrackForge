@@ -34,7 +34,7 @@ jobs:
           # merge-base on single-commit branches (dependabot, PRs).
           fetch-depth: 0
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 9.15.0
 

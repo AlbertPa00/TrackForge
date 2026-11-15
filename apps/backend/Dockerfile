@@ -10,6 +10,7 @@ COPY pnpm-lock.yaml pnpm-workspace.yaml package.json turbo.json ./
 COPY apps/backend/package.json apps/backend/
 COPY apps/frontend/package.json apps/frontend/
 COPY apps/mcp/package.json apps/mcp/
+COPY docs/package.json docs/
 RUN pnpm install --frozen-lockfile
 COPY . .
 RUN pnpm --filter backend db:generate \

@@ -53,6 +53,9 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
+    # Pages must be enabled once in repo settings (Source: GitHub Actions);
+    # until then the deploy step can't succeed and shouldn't fail every push.
+    continue-on-error: true
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

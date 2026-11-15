@@ -548,9 +548,12 @@ async function main() {
   }
 
   // 35. Sprint 013: scrum lifecycle — sprint → estimate → start → complete → reports.
-  // Uses pk's board (flipped scrum by the 013 migration or created kanban —
-  // set explicitly to scrum for this section).
-  const board = await tf.call<{ id: string; type: string }>('GET', `/rest/agile/1.0/board/${pk}`);
+  // Needs a board with NO active sprint: pk's board may carry one on seeded
+  // datasets (SCRUM ships an active sprint), so the section gets a dedicated
+  // project — hermetic on any environment and across repeat eval runs.
+  const spk = `EVS${Date.now().toString(36).toUpperCase()}`.slice(0, 10);
+  await tf.call('POST', '/rest/api/2/project', { body: { key: spk, name: `Eval Sprints ${run}` } });
+  const board = await tf.call<{ id: string; type: string }>('GET', `/rest/agile/1.0/board/${spk}`);
   if (board.type !== 'scrum') {
     await tf.call('PUT', `/rest/agile/1.0/board/${board.id}/type`, { body: { type: 'scrum' } });
   }
@@ -559,10 +562,10 @@ async function main() {
 
   const sprint = await tf.call<{ id: string; name: string; state: string; sequence: number }>(
     'POST', '/rest/agile/1.0/sprint', { body: { originBoardId: board.id, goal: `${run} goal` } });
-  check('create_sprint auto-names + sequences', /^[A-Z]+ Sprint \d+$/.test(sprint.name) && sprint.state === 'future' && sprint.sequence > 0);
+  check('create_sprint auto-names + sequences', /^[A-Z0-9]+ Sprint \d+$/.test(sprint.name) && sprint.state === 'future' && sprint.sequence > 0);
 
   const spIssue = await tf.call<Issue>('POST', '/rest/api/2/issue',
-    { body: { fields: { project: { key: pk }, summary: `${run} sprint item`, story_points: 5 } } });
+    { body: { fields: { project: { key: spk }, summary: `${run} sprint item`, story_points: 5 } } });
   created.push(spIssue.key);
   await tf.call('POST', `/rest/agile/1.0/sprint/${sprint.id}/issue`, { body: { issues: [spIssue.key] } });
   const inSprint = await tf.call<{ issues: Issue[] }>('GET', `/rest/agile/1.0/sprint/${sprint.id}/issue`);

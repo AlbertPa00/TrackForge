@@ -50,7 +50,7 @@ describe('041 /api/internal/roadmap', () => {
     expect(e1.due).toBe('2026-06-01');
     expect(e1.progress).toEqual({ done: 1, total: 2, pct: 50 });
     // e1 blocks e2 — scoped to on-screen epics
-    expect(e1.links).toEqual([{ typeId: expect.any(String), type: expect.any(String), direction: 'outward', key: 'RM-2' }]);
+    expect(e1.links).toEqual([{ id: expect.any(String), typeId: expect.any(String), type: expect.any(String), direction: 'outward', key: 'RM-2' }]);
     expect(res.body.versions).toEqual([{ name: 'v1.0', releaseDate: '2026-07-01', released: false, startDate: null }]);
     expect(res.body.range.start <= '2026-03-01').toBe(true);
   });

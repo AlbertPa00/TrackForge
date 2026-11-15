@@ -3,6 +3,15 @@
   "version": 1,
   "pages": [
     {
+      "slug": "home",
+      "title": "TrackForge",
+      "section": "overview",
+      "audience": "public",
+      "source": "index.md",
+      "ownerSprint": "050",
+      "description": "Jira-compatible tracking. Agent-native by design."
+    },
+    {
       "slug": "capability-matrix",
       "title": "Capabilities & Jira comparison",
       "section": "overview",
@@ -307,6 +316,15 @@
       "source": "mcp.md",
       "ownerSprint": "047",
       "description": "The trackforge-mcp tool surface: transports, auth, and the agent loop."
+    },
+    {
+      "slug": "api-explorer",
+      "title": "REST API explorer",
+      "section": "api",
+      "audience": "public",
+      "source": "api.md",
+      "ownerSprint": "050",
+      "description": "Interactive Scalar explorer for the Jira-compatible REST API."
     },
     {
       "slug": "roadmap",

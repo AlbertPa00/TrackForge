@@ -152,7 +152,7 @@ describe('031 leak matrix — secured issue on every read path', () => {
   });
 
   it('035: SSE event visibility check denies secured issues to non-members', async () => {
-    const { eventIssueVisible } = await import('../../src/lib/jobs.js');
+    const { eventIssueVisible } = await import('../../src/services/sseHub.js');
     const issue = await prisma.issue.findFirstOrThrow({
       where: { project: { key: 'LK' }, summary: 'locked' },
       select: { id: true },

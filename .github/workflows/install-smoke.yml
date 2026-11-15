@@ -20,10 +20,10 @@ jobs:
             echo "POSTGRES_PASSWORD=ci-postgres-$RANDOM"
             echo "SESSION_SECRET=ci-secret-$(date +%s)-padded-past-32-chars"
             echo "TF_ADMIN_EMAIL=admin@ci.local"
-            echo "TF_ADMIN_PASSWORD=ci-admin-$RANDOM"
+            echo "TF_ADMIN_PASSWORD=ci-admin-$(date +%s)"
             echo "PUBLIC_BASE_URL=http://localhost:3000"
           } >> .env
-          sed -i '/^POSTGRES_PASSWORD=change-me/d;/^SESSION_SECRET=change-me/d;/^TF_ADMIN_EMAIL=admin@/d;/^TF_ADMIN_PASSWORD=change-me/d' .env
+          sed -i '/^POSTGRES_PASSWORD=change-me/d;/^SESSION_SECRET=change-me/d;/^TF_ADMIN_EMAIL=admin@example\.com/d;/^TF_ADMIN_PASSWORD=change-me/d' .env
           cat .env
 
       - name: Build app image

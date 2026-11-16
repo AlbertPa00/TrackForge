@@ -5,7 +5,7 @@ import { ps } from '../lib/validation.js';
 // RFC 9700 profile: no implicit/ROPC; S256 PKCE mandatory; exact redirect match.
 import { Router, type Router as RouterType, type Request, type Response, type NextFunction } from 'express';
 import express from 'express';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import crypto from 'node:crypto';
 import { prisma } from '../prisma.js';
 import { requireAuth, requireAdmin, rateLimit, resolveRequestActor } from '../middleware/auth.js';

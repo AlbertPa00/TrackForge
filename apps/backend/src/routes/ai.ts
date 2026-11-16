@@ -5,7 +5,7 @@ import { ps } from '../lib/validation.js';
 import { Router, type Router as RouterType } from 'express';
 import type { NextFunction, Request, Response } from 'express';
 import multer from 'multer';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import {
   getAiSettings,
   invalidateAiSettingsCache,

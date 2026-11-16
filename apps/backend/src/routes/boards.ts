@@ -1,6 +1,6 @@
 import { ps } from '../lib/validation.js';
 import { Router, type Router as RouterType } from 'express';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import {
   createBoard,
   createQuickFilter,

@@ -3,7 +3,7 @@ import { ps } from '../lib/validation.js';
 // /api/internal/bulk and /api/internal/export. Mounted before migrationRouter
 // (its blanket requireAdmin would otherwise 403 these paths).
 import { Router, type Router as RouterType } from 'express';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { jiraError } from '../lib/errors.js';
 import { ah, parseBody, parseQuery } from '../lib/http.js';
 import { createBulkJob, getBulkJob, retryBulkJob } from '../services/bulkService.js';

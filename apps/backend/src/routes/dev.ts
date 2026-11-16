@@ -3,7 +3,7 @@ import { ps } from '../lib/validation.js';
 import { Router, type Router as RouterType } from 'express';
 import express from 'express';
 import crypto from 'node:crypto';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { prisma } from '../prisma.js';
 import { JiraApiError, jiraError } from '../lib/errors.js';
 import { formatZodErrors } from '../lib/validation.js';

@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 /**
  * Query-scalar coercion. Express 5 types `req.query` values as

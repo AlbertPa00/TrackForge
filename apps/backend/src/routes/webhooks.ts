@@ -3,7 +3,7 @@ import { ps } from '../lib/validation.js';
 // Admin-only (matches Jira's "webhooks need admin" + our token admin scope).
 
 import { Router, type Router as RouterType } from 'express';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { requireAdmin } from '../middleware/auth.js';
 import { jiraError } from '../lib/errors.js';
 import { formatZodErrors } from '../lib/validation.js';

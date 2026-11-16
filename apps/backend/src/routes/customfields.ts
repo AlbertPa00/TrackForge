@@ -11,7 +11,7 @@ import { ps } from '../lib/validation.js';
 //   DELETE /api/internal/customfields/:id/contexts/:ctxId   remove context
 
 import { Router, type Router as RouterType } from 'express';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { requireAdmin } from '../middleware/auth.js';
 import { qs, formatZodErrors } from '../lib/validation.js';
 import { jiraError } from '../lib/errors.js';

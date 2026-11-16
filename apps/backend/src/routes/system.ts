@@ -15,7 +15,7 @@ import {
   getModuleToggles,
   setModuleToggles,
 } from '../services/settingsService.js';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { requireAdmin, projectAllowed } from '../middleware/auth.js';
 import { hasPermission } from '../services/permissionService.js';
 import { listArchivedIssues } from '../services/issueService.js';

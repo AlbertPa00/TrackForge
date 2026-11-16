@@ -6,7 +6,7 @@
 // they do not re-implement them locally.
 
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
-import type { z } from 'zod';
+import type { z } from 'zod/v3';
 import { publicBaseUrl } from '../config.js';
 import { JiraApiError, jiraError } from './errors.js';
 import { formatZodErrors } from './validation.js';

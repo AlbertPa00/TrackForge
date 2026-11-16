@@ -1,5 +1,5 @@
 import { zodToJsonSchema } from 'zod-to-json-schema';
-import { z, type ZodTypeAny } from 'zod';
+import { z, type ZodTypeAny } from 'zod/v3';
 import {
   createIssueSchema,
   updateIssueSchema,

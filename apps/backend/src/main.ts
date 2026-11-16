@@ -50,7 +50,7 @@ import { permissionRouter, projectPermissionRouter } from './routes/permissions.
 import { healthz, readyz, metrics, adminJobsRouter, metricsMiddleware } from './routes/ops.js';
 import { ah } from './lib/http.js';
 import { requestLogger } from './lib/logger.js';
-import { ZodError } from 'zod';
+import { ZodError } from 'zod/v3';
 import { Prisma } from '@prisma/client';
 import { formatZodErrors } from './lib/validation.js';
 import { JiraApiError, jiraError } from './lib/errors.js';

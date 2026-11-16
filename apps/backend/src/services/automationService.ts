@@ -6,7 +6,7 @@
 // structurally excluded (FR-004). Effective permissions are actor ∩ author.
 
 import type { AutomationRule, AutomationRun, DomainEvent } from '@prisma/client';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { prisma } from '../prisma.js';
 import type { Actor } from '../lib/auth.js';
 import { JiraApiError, jiraError } from '../lib/errors.js';

@@ -3,7 +3,7 @@ import { ps } from '../lib/validation.js';
 //   adminIdpRouter → /api/internal/admin/idps          (site-admin only)
 //   identityAuthRouter → /api/internal/auth            (public OIDC/reset)
 import { Router, type Router as RouterType } from 'express';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { jiraError, JiraApiError } from '../lib/errors.js';
 import { qs, formatZodErrors } from '../lib/validation.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';

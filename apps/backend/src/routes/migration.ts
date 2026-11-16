@@ -1,6 +1,6 @@
 import { ps } from '../lib/validation.js';
 import { Router, type Router as RouterType } from 'express';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { startImport, getImport, listImports, resumeImport } from '../import/service.js';
 import { requireAdmin } from '../middleware/auth.js';
 import { jiraError } from '../lib/errors.js';

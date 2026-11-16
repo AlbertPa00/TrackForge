@@ -3,7 +3,7 @@ import { ps } from '../lib/validation.js';
 // "Your work". Powers the bell + home page; all scoped to the caller.
 
 import { Router, type Router as RouterType } from 'express';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { prisma } from '../prisma.js';
 import { jiraError } from '../lib/errors.js';
 import { qs, formatZodErrors } from '../lib/validation.js';

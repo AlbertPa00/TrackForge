@@ -5,7 +5,7 @@
 // JWK export — no new deps). FR-001: they resolve to the same Actor as PATs.
 import crypto from 'node:crypto';
 import jwt from 'jsonwebtoken';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import type { OAuthClient, OAuthGrant } from '@prisma/client';
 import { prisma } from '../prisma.js';
 import { hashToken } from '../lib/auth.js';

@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 /**
  * 043 — 12-factor config contract. Every setting arrives via env or a mounted

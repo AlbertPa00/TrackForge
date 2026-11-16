@@ -5,7 +5,7 @@ import { ps } from '../lib/validation.js';
 // project assignment and per-level management.
 
 import { Router, type Router as RouterType } from 'express';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { JiraApiError, jiraError } from '../lib/errors.js';
 import { requireAdmin } from '../middleware/auth.js';
 import {

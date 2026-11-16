@@ -2,7 +2,7 @@ import { ps } from '../lib/validation.js';
 // 047 — agent session + question routes. Internal product API; agents drive
 // the same surface via PAT (write scope) — delegation grants no powers (FR-001).
 import { Router, type Router as RouterType } from 'express';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import type { Actor } from '../lib/auth.js';
 import { ah, parseBody } from '../lib/http.js';
 import { enforceIssueScope } from '../middleware/auth.js';

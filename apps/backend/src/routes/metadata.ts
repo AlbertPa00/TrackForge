@@ -13,7 +13,7 @@ import {
 import { requireAdmin } from '../middleware/auth.js';
 import { audit } from '../services/auditService.js';
 import { invalidateJqlCtxCache } from '../jql/ctxCache.js';
-import type { z } from 'zod';
+import type { z } from 'zod/v3';
 import type { Prisma } from '@prisma/client';
 import { ah } from '../lib/http.js';
 

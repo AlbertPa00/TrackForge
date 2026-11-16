@@ -5,7 +5,7 @@
 // the rule level (autoApply is opt-in, non-autoApply is inert without LLM).
 
 import type { AutomationRun } from '@prisma/client';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { prisma } from '../prisma.js';
 import type { Actor } from '../lib/auth.js';
 import { JiraApiError, jiraError } from '../lib/errors.js';

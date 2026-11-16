@@ -2,7 +2,7 @@ import { ps } from '../lib/validation.js';
 // Sprint 022: TF-extension issue operations — clone + move (Jira has no REST
 // equivalents; both live under /api/internal/issues and are dryRun-able).
 import { Router, type Router as RouterType } from 'express';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { JiraApiError, jiraError } from '../lib/errors.js';
 import { enforceIssueScope, projectAllowed } from '../middleware/auth.js';
 import { getIssueByKey, toIssueResponse } from '../services/issueService.js';

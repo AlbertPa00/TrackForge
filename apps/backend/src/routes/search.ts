@@ -1,6 +1,6 @@
 import { Router, type Router as RouterType } from 'express';
 import type { Request, Response, NextFunction } from 'express';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { aggregateIssues, executeSearch, jqlToHttpError } from '../services/searchService.js';
 import { jiraError } from '../lib/errors.js';
 import { searchRequestSchema, formatZodErrors } from '../lib/validation.js';

@@ -3,7 +3,7 @@ import { ps } from '../lib/validation.js';
 // /scim/v2/* sits OUTSIDE requireAuth — the per-connection bearer IS the auth
 // (resolveScimToken). /api/internal/admin/directory/* is requireAdmin.
 import { Router, type Router as RouterType, type NextFunction, type Request, type Response } from 'express';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import crypto from 'node:crypto';
 import { prisma } from '../prisma.js';
 import { requireAuth, requireAdmin, rateLimit } from '../middleware/auth.js';

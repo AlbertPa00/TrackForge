@@ -15,7 +15,7 @@ import { jiraError } from '../lib/errors.js';
 import { rankIssues, previewRankIssues, listBacklog } from '../services/boardService.js';
 import { getIssueByKey, toIssueResponse, parseSelection, expandIssueResponse } from '../services/issueService.js';
 import { getEpic, listEpicIssues, moveIssuesToEpic, removeIssuesFromEpic } from '../services/epicService.js';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { enforceBoardScope, enforceIssueScope, enforceSprintScope, projectAllowed } from '../middleware/auth.js';
 import { ah, markDryRun, isDryRun, pageParams } from '../lib/http.js';
 

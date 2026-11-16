@@ -7,7 +7,7 @@ import { ps } from '../lib/validation.js';
 // user as the rule actor requires site admin (resolveRuleActor).
 
 import { Router, type Router as RouterType } from 'express';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { prisma } from '../prisma.js';
 import { JiraApiError, jiraError } from '../lib/errors.js';
 import { ah, pageParams, parseBody } from '../lib/http.js';

@@ -3,7 +3,7 @@
  * schema, storage↔Jira (de)serializers, searcher → JQL operators, update ops.
  * Adding a type = adding an entry here + a renderer on the frontend.
  */
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { JiraApiError, jiraError } from './errors.js';
 import { isAllowedExternalUrl, ALLOWED_URL_SCHEMES_LABEL } from './urls.js';
 

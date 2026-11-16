@@ -22,7 +22,7 @@ import { audit } from '../services/auditService.js';
 import { jiraError } from '../lib/errors.js';
 import { ah, sendCsv, isDryRun, pageParams } from '../lib/http.js';
 import { prisma } from '../prisma.js';
-import type { User } from '@prisma/client';
+import type { User } from '../lib/pc.js';
 import { z } from 'zod/v3';
 import { qs, createUserSchema, createTokenSchema, formatZodErrors } from '../lib/validation.js';
 import crypto from 'node:crypto';

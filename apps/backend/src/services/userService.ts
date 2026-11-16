@@ -1,4 +1,4 @@
-import type { User } from '@prisma/client';
+import type { User } from '../lib/pc.js';
 import { createHmac } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { prisma } from '../prisma.js';

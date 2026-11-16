@@ -1,7 +1,7 @@
 // 070 — PAT cache lifecycle: store/hit, explicit invalidation on revoke
 // paths, TTL expiry, and the touch-debounce flag.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import type { ApiToken, User } from '@prisma/client';
+import type { ApiToken, User } from '../../../src/lib/pc.js';
 import {
   lookupApiToken,
   storeApiToken,

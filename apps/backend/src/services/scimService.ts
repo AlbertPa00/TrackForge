@@ -6,7 +6,7 @@
 //   - PATCH parsing tolerant (Entra/Okta dialects differ)
 import { prisma } from '../prisma.js';
 import { hashToken } from '../lib/auth.js';
-import type { DirectoryConnection } from '@prisma/client';
+import type { DirectoryConnection } from '../lib/pc.js';
 
 const USER_SCHEMA = 'urn:ietf:params:scim:schemas:core:2.0:User';
 const GROUP_SCHEMA = 'urn:ietf:params:scim:schemas:core:2.0:Group';

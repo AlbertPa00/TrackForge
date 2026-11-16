@@ -11,7 +11,7 @@
 // immediate (direct SQL revocation degrades to the TTL). Expiry is
 // re-checked on every hit — a token never lives past its expiresAt.
 
-import type { ApiToken, User } from '@prisma/client';
+import type { ApiToken, User } from '../lib/pc.js';
 import { logger } from './logger.js';
 
 const log = logger.child({ mod: 'token-cache' });

@@ -7,7 +7,7 @@
 //   agent_failed   → a session you delegated fails (e.g. question expired)
 // Skipped: your own events, events on agent users (agents use webhooks/feed).
 
-import type { DomainEvent } from '@prisma/client';
+import type { DomainEvent } from '../lib/pc.js';
 import { prisma } from '../prisma.js';
 import { toUserResponse } from './userService.js';
 

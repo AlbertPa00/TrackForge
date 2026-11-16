@@ -15,7 +15,7 @@ import {
 } from '../services/proposalService.js';
 import { jiraError } from '../lib/errors.js';
 import { toStatusCategory } from '../services/metaService.js';
-import type { Prisma } from '@prisma/client';
+import type { Prisma } from '../lib/pc.js';
 import { ah } from '../lib/http.js';
 
 export const proposalsRouter: RouterType = Router();

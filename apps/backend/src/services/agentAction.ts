@@ -4,7 +4,7 @@
 // rows for human approval. Requires the D9 LLM provider; off by default at
 // the rule level (autoApply is opt-in, non-autoApply is inert without LLM).
 
-import type { AutomationRun } from '@prisma/client';
+import type { AutomationRun } from '../lib/pc.js';
 import { z } from 'zod/v3';
 import { prisma } from '../prisma.js';
 import type { Actor } from '../lib/auth.js';

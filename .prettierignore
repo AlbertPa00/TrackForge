@@ -6,3 +6,4 @@ prisma/migrations/
 *.db
 *.log
 pnpm-lock.yaml
+apps/backend/src/generated/

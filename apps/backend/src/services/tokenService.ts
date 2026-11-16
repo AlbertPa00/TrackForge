@@ -1,4 +1,4 @@
-import type { ApiToken } from '@prisma/client';
+import type { ApiToken } from '../lib/pc.js';
 import { prisma } from '../prisma.js';
 import { JiraApiError, jiraError } from '../lib/errors.js';
 import { generateToken } from '../lib/auth.js';

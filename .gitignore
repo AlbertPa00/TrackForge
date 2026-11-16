@@ -68,3 +68,6 @@ eg*.json
 # e2e screenshot artifacts
 shot-*.png
 apps/frontend/undefined/
+
+# Prisma 7 generated client (rebuilt via pnpm --filter backend db:generate)
+apps/backend/src/generated/

@@ -1,4 +1,4 @@
-import type { ImportJob, PrismaClient } from '@prisma/client';
+import type { ImportJob, PrismaClient } from '../lib/pc.js';
 
 /**
  * Sprint 017 importer extension contract.

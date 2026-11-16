@@ -4,7 +4,7 @@
  * headers (FR-005); issue visibility enforced by callers (FR-002).
  */
 import { fileTypeFromBuffer } from 'file-type';
-import type { Attachment, Issue, User } from '@prisma/client';
+import type { Attachment, Issue, User } from '../lib/pc.js';
 import { prisma } from '../prisma.js';
 import { JiraApiError, jiraError } from '../lib/errors.js';
 import type { Actor } from '../lib/auth.js';

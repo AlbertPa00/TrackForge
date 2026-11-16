@@ -12,7 +12,7 @@ import { addWatcher, autowatchAllowed } from './notificationService.js';
 import { requirePermission, hasPermission } from './permissionService.js';
 import { assertIssueWritable } from './projectService.js';
 import { toAttachmentResponse } from './attachmentService.js';
-import type { Attachment, Prisma, User } from '@prisma/client';
+import type { Attachment, Prisma, User } from '../lib/pc.js';
 import { Prisma as PrismaRt } from '../lib/pc.js';
 import type { Actor } from '../lib/auth.js';
 import { securityGateWhere, cascadeEffectiveSecurity } from './issueSecurityService.js';
@@ -1759,7 +1759,7 @@ export interface IssueViewOptions {
     childrenOriginalSec: number;
     childrenRemainingSec: number;
     worklogTotal: number;
-    worklogs?: import('@prisma/client').Worklog[];
+    worklogs?: import('../lib/pc.js').Worklog[];
     cfg: import('../lib/duration.js').TimeTrackingConfig;
   };
 }

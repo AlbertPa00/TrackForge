@@ -9,7 +9,7 @@
 // opt-in and redacts tokens/secrets before persisting.
 
 import crypto from 'crypto';
-import type { AiSettings } from '@prisma/client';
+import type { AiSettings } from '../lib/pc.js';
 import { prisma } from '../prisma.js';
 import { JiraApiError, jiraError } from './errors.js';
 import { sessionSecret } from '../config.js';

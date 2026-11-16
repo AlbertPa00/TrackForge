@@ -23,7 +23,7 @@ import {
   scimErrorBody,
   ScimError,
 } from '../services/scimService.js';
-import type { DirectoryConnection } from '@prisma/client';
+import type { DirectoryConnection } from '../lib/pc.js';
 import { ah } from '../lib/http.js';
 
 export const scimRouter: RouterType = Router();

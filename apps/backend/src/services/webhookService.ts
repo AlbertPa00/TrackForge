@@ -2,7 +2,7 @@
 // retry/backoff, SSRF protection, delivery log + redeliver.
 
 import { createHmac, randomBytes } from 'node:crypto';
-import type { DomainEvent } from '@prisma/client';
+import type { DomainEvent } from '../lib/pc.js';
 import { prisma } from '../prisma.js';
 import { JiraApiError, jiraError } from '../lib/errors.js';
 import { assertPublicUrl as egressAssertPublicUrl, egressFetch, isPrivateAddress } from '../lib/egress.js';
@@ -11,7 +11,7 @@ import { toWebhookBody } from './eventService.js';
 import { parseJql } from '../jql/parser.js';
 import { compileJql } from '../jql/compiler.js';
 import type { Actor } from '../lib/auth.js';
-import type { Prisma } from '@prisma/client';
+import type { Prisma } from '../lib/pc.js';
 import { resourceSelf } from '../lib/http.js';
 
 async function auditWebhook(

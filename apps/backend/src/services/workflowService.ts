@@ -6,7 +6,7 @@ import { emitEvent } from './eventService.js';
 import { checkAssign, issueInclude, toIssueResponse } from './issueService.js';
 import { toUserResponse } from './userService.js';
 import type { Actor } from '../lib/auth.js';
-import type { Prisma } from '@prisma/client';
+import type { Prisma } from '../lib/pc.js';
 import { requirePermission, hasPermission, userInProjectRole, userInGroup } from './permissionService.js';
 import { assertIssueWritable, projectByKeyOr404 } from './projectService.js';
 

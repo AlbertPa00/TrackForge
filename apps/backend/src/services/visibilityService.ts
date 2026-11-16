@@ -10,7 +10,7 @@
 
 import { prisma } from '../prisma.js';
 import type { Actor } from '../lib/auth.js';
-import type { Prisma } from '@prisma/client';
+import type { Prisma } from '../lib/pc.js';
 import { securityGateWhere, canSeeIssue } from './issueSecurityService.js';
 import { nonBrowsableProjectIds } from './permissionService.js';
 

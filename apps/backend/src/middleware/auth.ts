@@ -1,5 +1,5 @@
 import type { NextFunction, Request, Response } from 'express';
-import type { ApiToken } from '@prisma/client';
+import type { ApiToken } from '../lib/pc.js';
 import { prisma } from '../prisma.js';
 import { actorFromAccessToken } from '../services/oauthService.js';
 import {

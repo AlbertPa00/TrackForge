@@ -3,7 +3,7 @@
 // resolution (scheme → event → recipients → dedupe → prefs → send, FR-002),
 // per-user prefs via UserPreference KV, filter-subscription digest runs.
 
-import type { DomainEvent } from '@prisma/client';
+import type { DomainEvent } from '../lib/pc.js';
 import type { Actor } from '../lib/auth.js';
 import { prisma } from '../prisma.js';
 import { JiraApiError, jiraError } from '../lib/errors.js';

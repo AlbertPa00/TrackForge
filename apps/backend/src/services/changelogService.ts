@@ -1,4 +1,4 @@
-import type { Prisma } from '@prisma/client';
+import type { Prisma } from '../lib/pc.js';
 import { prisma } from '../prisma.js';
 import type { Actor } from '../lib/auth.js';
 import { resourceSelf } from '../lib/http.js';

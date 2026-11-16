@@ -10,7 +10,7 @@
 
 import { prisma } from '../prisma.js';
 import { JiraApiError, jiraError } from '../lib/errors.js';
-import type { Prisma } from '@prisma/client';
+import type { Prisma } from '../lib/pc.js';
 import { projectByKeyOr404 } from './projectService.js';
 
 export type ScreenOp = 'create' | 'edit' | 'view';

@@ -4,7 +4,7 @@
 //   GET /worklog/updated|deleted  POST /worklog/list   (incremental sync)
 // `timeSpent` is always derived from Worklog rows — never stored (FR-003).
 
-import type { Prisma, Worklog } from '@prisma/client';
+import type { Prisma, Worklog } from '../lib/pc.js';
 import { Prisma as PrismaV } from '../lib/pc.js';
 import { prisma } from '../prisma.js';
 import { JiraApiError, jiraError } from '../lib/errors.js';

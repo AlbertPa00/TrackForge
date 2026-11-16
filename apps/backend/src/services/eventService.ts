@@ -2,7 +2,7 @@
 // A JobRunner tick dispatches undispatched rows to the SSE hub, webhook
 // matcher and notification generator (at-least-once, in id order).
 
-import type { Prisma, DomainEvent } from '@prisma/client';
+import type { Prisma, DomainEvent } from '../lib/pc.js';
 import { prisma } from '../prisma.js';
 import { resourceSelf } from '../lib/http.js';
 

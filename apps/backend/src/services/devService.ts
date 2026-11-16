@@ -1,6 +1,6 @@
 // Sprint 038: git ingest, DevelopmentItem normalization, smart commits, panel data.
 import crypto from 'node:crypto';
-import type { Prisma } from '@prisma/client';
+import type { Prisma } from '../lib/pc.js';
 import { issueKeyToWhere, parseIssueKeyParts } from '../lib/issueKey.js';
 import { prisma } from '../prisma.js';
 import { JiraApiError, jiraError } from '../lib/errors.js';

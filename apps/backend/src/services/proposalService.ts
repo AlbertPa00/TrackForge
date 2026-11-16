@@ -12,7 +12,7 @@ import { pathWithFreshConfirmToken } from '../lib/confirmToken.js';
 import { parseIssueKeyParts } from '../lib/issueKey.js';
 import { emitEvent } from './eventService.js';
 import { hasPermission } from './permissionService.js';
-import type { Prisma } from '@prisma/client';
+import type { Prisma } from '../lib/pc.js';
 
 const EXPIRY_DAYS = 7;
 

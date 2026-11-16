@@ -11,6 +11,7 @@ export default [
       '**/build/',
       '**/coverage/',
       '**/prisma/migrations/',
+      '**/src/generated/',
       '**/*.js',
       '**/*.cjs',
       '**/*.db',

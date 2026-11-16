@@ -5,7 +5,7 @@
 // chain (jsonb payload.automation) so same-rule recursion and deep chains are
 // structurally excluded (FR-004). Effective permissions are actor ∩ author.
 
-import type { AutomationRule, AutomationRun, DomainEvent } from '@prisma/client';
+import type { AutomationRule, AutomationRun, DomainEvent } from '../lib/pc.js';
 import { z } from 'zod/v3';
 import { prisma } from '../prisma.js';
 import type { Actor } from '../lib/auth.js';
@@ -19,7 +19,7 @@ import { addComment } from './commentService.js';
 import { createLink } from './linkService.js';
 import { egressFetch } from '../lib/egress.js';
 import type { EventPayload } from './eventService.js';
-import type { Prisma } from '@prisma/client';
+import type { Prisma } from '../lib/pc.js';
 
 const j = (v: unknown) => v as Prisma.InputJsonValue;
 

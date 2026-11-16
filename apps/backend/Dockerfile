@@ -2,8 +2,7 @@
 # 043 — trackforge-app: single-origin image (backend serves the built frontend).
 # Build from the REPO ROOT:  docker build -f apps/backend/Dockerfile -t trackforge .
 FROM node:24-alpine@sha256:116b800c3754b440ee0aa3ed2f20f5bf3d99a554bfd9adeea09ea8017f6e85f5 AS build
-# openssl needed BEFORE prisma generate so it detects musl-openssl-3.x (not
-# the default 1.1.x engine, which won't load on alpine 3.20+).
+# openssl: prisma's schema engine (migrate) and native deps link against it.
 RUN apk add --no-cache openssl && corepack enable && corepack prepare pnpm@9.15.0 --activate
 WORKDIR /src
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json turbo.json ./
@@ -19,9 +18,10 @@ RUN pnpm --filter backend db:generate \
  && pnpm --filter backend build \
  && pnpm --filter backend deploy --prod /out \
  && cp -r apps/backend/prisma /out/prisma \
- && cd /out && ./node_modules/.bin/prisma generate --schema=./prisma/schema.prisma
-# pnpm deploy --prod doesn't carry the generated client (.prisma/) — regenerate
-# it inside /out so require('.prisma/client/default') resolves at runtime.
+ && cp apps/backend/prisma.config.ts /out/prisma.config.ts
+# Prisma 7: the generated client is compiled into dist/ with the app — no
+# runtime generate needed — but `prisma migrate deploy` still wants
+# prisma.config.ts (datasource url) + the schema/migrations in /out.
 
 FROM node:24-alpine@sha256:116b800c3754b440ee0aa3ed2f20f5bf3d99a554bfd9adeea09ea8017f6e85f5 AS runtime
 ARG TF_VERSION=0.0.0-dev

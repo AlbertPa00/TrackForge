@@ -1,4 +1,4 @@
-import type { PrismaClient, ImportJob } from '@prisma/client';
+import type { PrismaClient, ImportJob } from '../lib/pc.js';
 import { prisma as db } from '../prisma.js';
 import { getDurableRunner } from '../lib/jobs.js';
 import { createJiraSource, createFixtureSource } from './jiraClient.js';

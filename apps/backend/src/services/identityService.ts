@@ -8,7 +8,7 @@ import { sessionSecret } from '../config.js';
 import { encryptSecret, readSecret } from '../lib/ai.js';
 import { projectAllowed } from '../middleware/auth.js';
 import { Prisma } from '../lib/pc.js';
-import type { User } from '@prisma/client';
+import type { User } from '../lib/pc.js';
 
 const SESSION_TTL_MS = Number(process.env.SESSION_TTL_HOURS ?? '12') * 3600 * 1000;
 

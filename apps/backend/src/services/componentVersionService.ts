@@ -1,7 +1,7 @@
 import { prisma } from '../prisma.js';
 import { JiraApiError, jiraError } from '../lib/errors.js';
 import { emitEvent } from './eventService.js';
-import type { Prisma } from '@prisma/client';
+import type { Prisma } from '../lib/pc.js';
 import { jiraDate, resourceSelf, userSelf } from '../lib/http.js';
 
 /** Sprint 019 — components & versions (Jira release model). */

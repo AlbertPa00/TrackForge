@@ -2,7 +2,7 @@
 // events through domain services is a service, not a lib primitive) ----------
 import type { Response } from 'express';
 import type { Actor } from '../lib/auth.js';
-import type { DomainEvent } from '@prisma/client';
+import type { DomainEvent } from '../lib/pc.js';
 import { prisma } from '../prisma.js';
 import { toEventResponse } from './eventService.js';
 import { canSeeIssue } from './issueSecurityService.js';

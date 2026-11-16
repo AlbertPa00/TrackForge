@@ -157,7 +157,7 @@ describe('031 leak matrix — secured issue on every read path', () => {
       where: { project: { key: 'LK' }, summary: 'locked' },
       select: { id: true },
     });
-    const ev = { issueId: issue.id } as import('@prisma/client').DomainEvent;
+    const ev = { issueId: issue.id } as import('../../src/lib/pc.js').DomainEvent;
     const outsiderActor = { user: outsider.user, channel: 'ui' as const };
     expect(await eventIssueVisible(ev, outsiderActor)).toBe(false);
     const admin = await prisma.user.findFirstOrThrow({ where: { isAdmin: true } });

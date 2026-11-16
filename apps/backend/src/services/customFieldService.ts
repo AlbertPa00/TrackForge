@@ -9,7 +9,7 @@ import { invalidateJqlCtxCache } from '../jql/ctxCache.js';
 import { prisma } from '../prisma.js';
 import { JiraApiError, jiraError } from '../lib/errors.js';
 import { cfTypeDef, searcherFor, CF_TYPES, type CfOption } from '../lib/cfTypes.js';
-import type { Prisma } from '@prisma/client';
+import type { Prisma } from '../lib/pc.js';
 
 export const SYSTEM_FIELD_ALIASES = ['story_points', 'flagged', 'startdate'] as const;
 export type SystemAlias = (typeof SYSTEM_FIELD_ALIASES)[number];

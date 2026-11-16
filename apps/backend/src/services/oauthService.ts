@@ -6,7 +6,7 @@
 import crypto from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import { z } from 'zod/v3';
-import type { OAuthClient, OAuthGrant } from '@prisma/client';
+import type { OAuthClient, OAuthGrant } from '../lib/pc.js';
 import { prisma } from '../prisma.js';
 import { hashToken } from '../lib/auth.js';
 import { publicBaseUrl } from '../config.js';

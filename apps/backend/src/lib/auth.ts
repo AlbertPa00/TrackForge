@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import { promisify } from 'node:util';
 import jwt from 'jsonwebtoken';
-import type { ApiToken, User } from '@prisma/client';
+import type { ApiToken, User } from '../lib/pc.js';
 import { sessionSecret } from '../config.js';
 
 // 065 audit A2 — the secret resolves through config (env or SESSION_SECRET_FILE);

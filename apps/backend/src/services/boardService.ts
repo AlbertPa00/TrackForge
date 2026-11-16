@@ -9,7 +9,7 @@ import { requirePermission } from './permissionService.js';
 import type { Actor } from '../lib/auth.js';
 import { securityGateWhere } from './issueSecurityService.js';
 import { canSeeProjectId, visibleIssueWhere, visibleIssueIds } from './visibilityService.js';
-import type { Prisma } from '@prisma/client';
+import type { Prisma } from '../lib/pc.js';
 import { resourceSelf } from '../lib/http.js';
 
 type Where = Prisma.IssueWhereInput;

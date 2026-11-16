@@ -7,7 +7,7 @@
 import { Client, type Entry } from 'ldapts';
 import { prisma } from '../prisma.js';
 import { revokeAllCredentials } from './scimService.js';
-import type { DirectoryConnection, User } from '@prisma/client';
+import type { DirectoryConnection, User } from '../lib/pc.js';
 
 export interface LdapConfig {
   hosts: string[]; // failover list — tried in order

@@ -51,7 +51,7 @@ import { healthz, readyz, metrics, adminJobsRouter, metricsMiddleware } from './
 import { ah } from './lib/http.js';
 import { requestLogger } from './lib/logger.js';
 import { ZodError } from 'zod/v3';
-import { Prisma } from '@prisma/client';
+import { Prisma } from './lib/pc.js';
 import { formatZodErrors } from './lib/validation.js';
 import { JiraApiError, jiraError } from './lib/errors.js';
 import { requireAuth, rateLimit, authRateLimit, ipRateLimit } from './middleware/auth.js';

@@ -408,7 +408,7 @@ export default function ActivitySection({
   });
   const usersMap = useMemo(() => new Map((users ?? []).map((u) => [u.accountId, u.displayName])), [users]);
 
-  type Entry = { kind: 'comment' | 'history' | 'worklog'; at: string; node: JSX.Element };
+  type Entry = { kind: 'comment' | 'history' | 'worklog'; at: string; node: React.JSX.Element };
   const entries: Entry[] = [];
   if (tab === 'all' || tab === 'worklogs') {
     for (const w of worklogs) {

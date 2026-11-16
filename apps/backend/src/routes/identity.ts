@@ -1,10 +1,11 @@
+import { ps } from '../lib/validation.js';
 // Sprint 036: identity admin + public auth flows.
 //   adminIdpRouter → /api/internal/admin/idps          (site-admin only)
 //   identityAuthRouter → /api/internal/auth            (public OIDC/reset)
 import { Router, type Router as RouterType } from 'express';
 import { z } from 'zod';
 import { jiraError, JiraApiError } from '../lib/errors.js';
-import { formatZodErrors } from '../lib/validation.js';
+import { qs, formatZodErrors } from '../lib/validation.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 
 import { audit } from '../services/auditService.js';
@@ -65,7 +66,7 @@ adminIdpRouter.put(
   ah(async (req, res) => {
     const parsed = idpSchema.partial().safeParse(req.body ?? {});
     if (!parsed.success) throw new JiraApiError(400, jiraError([], formatZodErrors(parsed.error)));
-    const idp = await upsertIdp(parsed.data, req.params.id);
+    const idp = await upsertIdp(parsed.data, ps(req.params.id));
     await audit(req, 'identity.idp.update', 'idp', idp.id, { name: idp.name });
     res.json(idp);
   })
@@ -74,10 +75,10 @@ adminIdpRouter.put(
 adminIdpRouter.delete(
   '/:id',
   ah(async (req, res) => {
-    await prisma.identityProvider.delete({ where: { id: req.params.id } }).catch(() => {
+    await prisma.identityProvider.delete({ where: { id: ps(req.params.id) } }).catch(() => {
       throw new JiraApiError(404, jiraError(['Identity provider not found.']));
     });
-    await audit(req, 'identity.idp.delete', 'idp', req.params.id);
+    await audit(req, 'identity.idp.delete', 'idp', ps(req.params.id));
     res.status(204).end();
   })
 );
@@ -159,12 +160,12 @@ identityAuthRouter.get(
 identityAuthRouter.get(
   '/oidc/:idp',
   ah(async (req, res) => {
-    const redirectUri = resourceSelf(`/api/internal/auth/oidc/${req.params.idp}/callback`);
-    const q = req.query.next;
+    const redirectUri = resourceSelf(`/api/internal/auth/oidc/${ps(req.params.idp)}/callback`);
+    const q = qs(req.query.next);
     const next =
       typeof q === 'string' && q.startsWith('/') && !q.startsWith('//') ? q : undefined;
-    const { redirectTo } = await beginOidc(req.params.idp, redirectUri, next);
-    if (req.query.json === 'true') res.json({ redirectTo });
+    const { redirectTo } = await beginOidc(ps(req.params.idp), redirectUri, next);
+    if (qs(req.query.json) === 'true') res.json({ redirectTo });
     else res.redirect(redirectTo);
   })
 );
@@ -175,11 +176,11 @@ identityAuthRouter.get(
   ah(async (req, res) => {
     const { code, state } = req.query as { code?: string; state?: string };
     if (!code || !state) throw new JiraApiError(400, jiraError(['Missing code/state.']));
-    const redirectUri = resourceSelf(`/api/internal/auth/oidc/${req.params.idp}/callback`);
+    const redirectUri = resourceSelf(`/api/internal/auth/oidc/${ps(req.params.idp)}/callback`);
     const next = oidcStates.get(state)?.next; // finishOidc consumes the record
-    const user = await finishOidc(req.params.idp, code, state, redirectUri);
+    const user = await finishOidc(ps(req.params.idp), code, state, redirectUri);
     req.actor = { user, channel: 'ui' };
-    await audit(req, 'login.oidc', 'user', user.id, { idp: req.params.idp });
+    await audit(req, 'login.oidc', 'user', user.id, { idp: ps(req.params.idp) });
     const s = await createSession(user.id, { headers: req.headers as Record<string, unknown>, ip: req.ip });
     res
       .cookie(SESSION_COOKIE, signSession(user.id, s.id), {

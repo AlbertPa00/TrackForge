@@ -1,3 +1,4 @@
+import { ps } from '../lib/validation.js';
 // Sprint 022: TF-extension issue operations — clone + move (Jira has no REST
 // equivalents; both live under /api/internal/issues and are dryRun-able).
 import { Router, type Router as RouterType } from 'express';
@@ -28,7 +29,7 @@ const cloneSchema = z.object({
 issueOpsRouter.post(
   '/:key/clone',
   ah(async (req, res) => {
-    const key = req.params.key.toUpperCase();
+    const key = ps(req.params.key).toUpperCase();
     await enforceIssueScope(key, req.actor!);
     const parsed = cloneSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
@@ -62,7 +63,7 @@ const moveSchema = z.object({
 issueOpsRouter.post(
   '/:key/move',
   ah(async (req, res) => {
-    const key = req.params.key.toUpperCase();
+    const key = ps(req.params.key).toUpperCase();
     await enforceIssueScope(key, req.actor!);
     const parsed = moveSchema.safeParse(req.body ?? {});
     if (!parsed.success) {

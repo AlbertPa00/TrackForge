@@ -1,3 +1,4 @@
+import { ps } from '../lib/validation.js';
 // Jira Server webhooks — /rest/webhooks/1.0/webhook + internal delivery log.
 // Admin-only (matches Jira's "webhooks need admin" + our token admin scope).
 
@@ -54,7 +55,7 @@ webhookRouter.post(
 webhookRouter.get(
   '/webhook/:id',
   ah(async (req, res) => {
-    res.json(await getWebhook(req.params.id));
+    res.json(await getWebhook(ps(req.params.id)));
   })
 );
 
@@ -66,14 +67,14 @@ webhookRouter.put(
       res.status(400).json(jiraError([], formatZodErrors(parsed.error)));
       return;
     }
-    res.json(await updateWebhook(req.actor!, req.params.id, parsed.data));
+    res.json(await updateWebhook(req.actor!, ps(req.params.id), parsed.data));
   })
 );
 
 webhookRouter.delete(
   '/webhook/:id',
   ah(async (req, res) => {
-    await deleteWebhook(req.actor!, req.params.id);
+    await deleteWebhook(req.actor!, ps(req.params.id));
     res.status(204).send();
   })
 );
@@ -86,7 +87,7 @@ webhookInternalRouter.get(
   '/webhooks/:id/deliveries',
   requireAdmin,
   ah(async (req, res) => {
-    res.json({ deliveries: await listDeliveries(req.params.id) });
+    res.json({ deliveries: await listDeliveries(ps(req.params.id)) });
   })
 );
 
@@ -94,7 +95,7 @@ webhookInternalRouter.post(
   '/webhooks/:id/deliveries/:deliveryId/redeliver',
   requireAdmin,
   ah(async (req, res) => {
-    await redeliver(req.params.deliveryId);
+    await redeliver(ps(req.params.deliveryId));
     res.status(202).json({ redelivering: true });
   })
 );

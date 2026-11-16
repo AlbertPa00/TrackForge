@@ -1,3 +1,4 @@
+import { ps } from '../lib/validation.js';
 import { Router, type Router as RouterType } from 'express';
 import {
   getUserByAccountId,
@@ -23,7 +24,7 @@ import { ah, sendCsv, isDryRun, pageParams } from '../lib/http.js';
 import { prisma } from '../prisma.js';
 import type { User } from '@prisma/client';
 import { z } from 'zod';
-import { createUserSchema, createTokenSchema, formatZodErrors } from '../lib/validation.js';
+import { qs, createUserSchema, createTokenSchema, formatZodErrors } from '../lib/validation.js';
 import crypto from 'node:crypto';
 
 export const userRouter: RouterType = Router();
@@ -34,7 +35,7 @@ export const internalRouter: RouterType = Router();
 userRouter.get(
   '/',
   ah(async (req, res) => {
-    const accountId = String(req.query.accountId ?? '');
+    const accountId = String(qs(req.query.accountId) ?? '');
     const user = await getUserByAccountId(accountId);
     res.json(toUserResponse(user));
   })
@@ -43,7 +44,7 @@ userRouter.get(
 userRouter.get(
   '/search',
   ah(async (req, res) => {
-    const users = await searchUsers(String(req.query.query ?? ''));
+    const users = await searchUsers(String(qs(req.query.query) ?? ''));
     res.json(users.map(toUserResponse));
   })
 );
@@ -51,11 +52,11 @@ userRouter.get(
 userRouter.get(
   '/assignable/search',
   ah(async (req, res) => {
-    const project = String(req.query.project ?? '');
+    const project = String(qs(req.query.project) ?? '');
     // absent vs empty matters: the picker calls with no query (Jira parity);
     // ?query=a is an enumeration attempt (065 C5).
-    const query = req.query.query === undefined ? undefined : String(req.query.query);
-    const users = await searchAssignable(project, query, String(req.query.agents ?? '') === 'true');
+    const query = qs(req.query.query) === undefined ? undefined : String(qs(req.query.query));
+    const users = await searchAssignable(project, query, String(qs(req.query.agents) ?? '') === 'true');
     res.json(users.map(toUserResponse));
   })
 );
@@ -69,7 +70,7 @@ userRouter.get(
 internalRouter.get(
   '/people',
   ah(async (req, res) => {
-    const query = String(req.query.query ?? '').trim();
+    const query = String(qs(req.query.query) ?? '').trim();
     const { startAt, maxResults } = pageParams(req, { cap: 200, default: 50 });
     const where = query
       ? {
@@ -228,7 +229,7 @@ internalRouter.post(
   '/users/:accountId/invite',
   requireAdmin,
   ah(async (req, res) => {
-    const user = await getUserByAccountId(req.params.accountId);
+    const user = await getUserByAccountId(ps(req.params.accountId));
     if (user.active || !user.invitedAt) {
       res.status(400).json(jiraError(['Only accounts with a pending invite can be re-invited.']));
       return;
@@ -255,7 +256,7 @@ internalRouter.post(
   '/users/:accountId/password-reset',
   requireAdmin,
   ah(async (req, res) => {
-    const user = await getUserByAccountId(req.params.accountId);
+    const user = await getUserByAccountId(ps(req.params.accountId));
     const { adminResetPassword } = await import('../services/identityService.js');
     const token = await adminResetPassword(req.actor!.user.id, user.id);
     const cfg = await getMailConfig();
@@ -294,7 +295,7 @@ internalRouter.post(
 
 const updateUserHandler = async (req: any, res: any, next: any) => {
   try {
-    const user = await updateUser(req.params.accountId, req.body ?? {});
+    const user = await updateUser(ps(req.params.accountId), req.body ?? {});
     // 065 audit F1 — log which fields changed, never the values: req.body can
     // carry a plaintext password and this row lands in the admin audit page,
     // the CSV export and every backup.
@@ -314,7 +315,7 @@ internalRouter.post(
   '/users/:accountId/anonymize',
   requireAdmin,
   ah(async (req, res) => {
-    const user = await getUserByAccountId(req.params.accountId);
+    const user = await getUserByAccountId(ps(req.params.accountId));
     if (user.id === req.actor!.user.id) {
       res.status(400).json(jiraError(['You cannot anonymize your own account.']));
       return;
@@ -323,7 +324,7 @@ internalRouter.post(
       res.json(await previewAnonymizeUser(user.id));
       return;
     }
-    const confirmToken = String(req.query.confirmToken ?? req.headers['x-confirm-token'] ?? '') || undefined;
+    const confirmToken = String(qs(req.query.confirmToken) ?? req.headers['x-confirm-token'] ?? '') || undefined;
     const result = await anonymizeUser(user.id, confirmToken);
     await audit(req, 'user.anonymized', 'user', user.id, { anonymizedTo: result.anonymized.displayName });
     res.status(204).end();
@@ -335,7 +336,7 @@ internalRouter.get(
   '/users/:accountId/profile',
   ah(async (req, res) => {
     const { getPublicProfile } = await import('../services/identityService.js');
-    res.json(await getPublicProfile(req.params.accountId, req.actor!));
+    res.json(await getPublicProfile(ps(req.params.accountId), req.actor!));
   })
 );
 
@@ -364,7 +365,7 @@ internalRouter.get(
   '/users/:accountId/tokens',
   requireAdmin,
   ah(async (req, res) => {
-    const tokens = await listTokens(req.params.accountId);
+    const tokens = await listTokens(ps(req.params.accountId));
     res.json(tokens.map(toTokenResponse));
   })
 );
@@ -381,7 +382,7 @@ internalRouter.post(
       res.status(400).json(jiraError([], formatZodErrors(parsed.error)));
       return;
     }
-    const target = await getUserByAccountId(req.params.accountId);
+    const target = await getUserByAccountId(ps(req.params.accountId));
     if (!target.active) {
       res.status(400).json(jiraError(['Cannot mint a token for an inactive account.']));
       return;
@@ -439,8 +440,8 @@ internalRouter.post(
 internalRouter.delete(
   '/tokens/:id',
   ah(async (req, res) => {
-    await revokeToken(req.params.id, req.actor!.user.id, req.actor!.user.isAdmin);
-    await audit(req, 'token.revoked', 'token', req.params.id);
+    await revokeToken(ps(req.params.id), req.actor!.user.id, req.actor!.user.isAdmin);
+    await audit(req, 'token.revoked', 'token', ps(req.params.id));
     res.status(204).end();
   })
 );
@@ -461,16 +462,16 @@ internalRouter.get(
   requireAdmin,
   ah(async (req, res) => {
     const filter = {
-      actorId: req.query.actorId ? String(req.query.actorId) : undefined,
-      action: req.query.action ? String(req.query.action) : undefined,
-      entityType: req.query.entityType ? String(req.query.entityType) : undefined,
-      entityId: req.query.entityId ? String(req.query.entityId) : undefined,
-      from: req.query.from ? new Date(String(req.query.from)) : undefined,
-      to: req.query.to ? new Date(String(req.query.to)) : undefined,
+      actorId: qs(req.query.actorId) ? String(qs(req.query.actorId)) : undefined,
+      action: qs(req.query.action) ? String(qs(req.query.action)) : undefined,
+      entityType: qs(req.query.entityType) ? String(qs(req.query.entityType)) : undefined,
+      entityId: qs(req.query.entityId) ? String(qs(req.query.entityId)) : undefined,
+      from: qs(req.query.from) ? new Date(String(qs(req.query.from))) : undefined,
+      to: qs(req.query.to) ? new Date(String(qs(req.query.to))) : undefined,
     };
     const { startAt, maxResults } = pageParams(req, { cap: 1000 });
     const { total, events } = await listAuditEvents(startAt, maxResults, filter);
-    if (String(req.query.format ?? '') === 'csv') {
+    if (String(qs(req.query.format) ?? '') === 'csv') {
       sendCsv(res, 'audit', auditEventRows(events));
       return;
     }
@@ -507,7 +508,7 @@ internalRouter.get(
 internalRouter.put(
   '/preferences/:key',
   ah(async (req, res) => {
-    const key = req.params.key;
+    const key = ps(req.params.key);
     if (!/^[a-z0-9_.-]{1,64}$/i.test(key)) {
       res.status(400).json(jiraError(['Invalid preference key.']));
       return;

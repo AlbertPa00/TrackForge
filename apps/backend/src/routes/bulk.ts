@@ -1,3 +1,4 @@
+import { ps } from '../lib/validation.js';
 // Sprint 023: bulk operations + export — TF-internal routes under
 // /api/internal/bulk and /api/internal/export. Mounted before migrationRouter
 // (its blanket requireAdmin would otherwise 403 these paths).
@@ -38,7 +39,7 @@ for (const op of ['edit', 'transition', 'move', 'delete', 'comment', 'watch', 'l
 bulkRouter.get(
   '/job/:jobId',
   ah(async (req, res) => {
-    res.json(await getBulkJob(req.params.jobId, req.actor!));
+    res.json(await getBulkJob(ps(req.params.jobId), req.actor!));
   })
 );
 
@@ -46,7 +47,7 @@ bulkRouter.post(
   '/job/:jobId/retry',
   ah(async (req, res) => {
     const { dryRun } = parseBody(z.object({ dryRun: z.boolean().optional() }), req);
-    res.status(dryRun ? 200 : 202).json(await retryBulkJob(req.params.jobId, dryRun ?? false, req.actor!));
+    res.status(dryRun ? 200 : 202).json(await retryBulkJob(ps(req.params.jobId), dryRun ?? false, req.actor!));
   })
 );
 
@@ -87,7 +88,7 @@ exportRouter.get(
   '/issue/:key',
   ah(async (req, res) => {
     parseQuery(z.object({ format: z.enum(['print']).default('print') }), req);
-    const html = await exportIssuePrint(req.actor!, req.params.key.toUpperCase());
+    const html = await exportIssuePrint(req.actor!, ps(req.params.key).toUpperCase());
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.send(html);
   })

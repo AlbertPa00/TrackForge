@@ -1,3 +1,4 @@
+import { ps } from '../lib/validation.js';
 // /api/internal/ai — settings (admin), copilot plan/execute, NL→JQL, issue
 // intelligence, similarity. Everything 404s via requireAi() when unconfigured.
 
@@ -407,7 +408,7 @@ aiRouter.get(
   '/threads/:id',
   ah(async (req: Request, res: Response) => {
     await requireAi();
-    res.json({ thread: await getCopilotThread(req.actor!, String(req.params.id)) });
+    res.json({ thread: await getCopilotThread(req.actor!, String(ps(req.params.id))) });
   })
 );
 
@@ -415,7 +416,7 @@ aiRouter.delete(
   '/threads/:id',
   ah(async (req: Request, res: Response) => {
     await requireAi();
-    await deleteCopilotThread(req.actor!, String(req.params.id));
+    await deleteCopilotThread(req.actor!, String(ps(req.params.id)));
     res.status(204).end();
   })
 );
@@ -449,7 +450,7 @@ aiRouter.post(
     res.json(
       await withProgress(req, 'summary', (step) => {
         step('llm');
-        return summarizeIssue(String(req.params.key), req.actor!);
+        return summarizeIssue(String(ps(req.params.key)), req.actor!);
       })
     );
   })
@@ -477,7 +478,7 @@ aiRouter.post(
     res.json(
       await withProgress(req, 'draft', (step) => {
         step('llm');
-        return draftDescription(String(req.params.key), req.actor!, b);
+        return draftDescription(String(ps(req.params.key)), req.actor!, b);
       })
     );
   })
@@ -490,7 +491,7 @@ aiRouter.post(
     res.json(
       await withProgress(req, 'breakdown', (step) => {
         step('llm');
-        return breakdownEpic(String(req.params.key), req.actor!);
+        return breakdownEpic(String(ps(req.params.key)), req.actor!);
       })
     );
   })
@@ -502,7 +503,7 @@ aiRouter.get(
   '/issues/:key/similar',
   ah(async (req: Request, res: Response) => {
     await requireAi();
-    res.json(await similarIssues(String(req.params.key), req.actor!));
+    res.json(await similarIssues(String(ps(req.params.key)), req.actor!));
   })
 );
 
@@ -514,7 +515,7 @@ aiRouter.post(
     res.json(
       await withProgress(req, 'resolution', (step) => {
         step('llm');
-        return suggestResolution(String(req.params.key), req.actor!);
+        return suggestResolution(String(ps(req.params.key)), req.actor!);
       })
     );
   })
@@ -544,6 +545,6 @@ aiRouter.post(
   ah(async (req: Request, res: Response) => {
     await requireAi();
     const { goal, capacity } = req.body as { goal?: string; capacity?: number };
-    res.json(await suggestSprintScope(String(req.params.boardId), req.actor!, { goal, capacity }));
+    res.json(await suggestSprintScope(String(ps(req.params.boardId)), req.actor!, { goal, capacity }));
   })
 );

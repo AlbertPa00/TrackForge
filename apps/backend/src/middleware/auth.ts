@@ -16,6 +16,7 @@ import { parseIssueKeyParts } from '../lib/issueKey.js';
 import { hasPermission } from '../services/permissionService.js';
 import { canSeeIssue } from '../services/issueSecurityService.js';
 import { lookupApiToken, storeApiToken, markTokenTouched } from '../lib/tokenCache.js';
+import { ps, qs } from '../lib/validation.js';
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -180,7 +181,7 @@ export async function resolveRequestActor(req: Request): Promise<Actor | null> {
   // SSE streams: EventSource cannot set headers — accept ?access_token= only
   // for GETs on stream endpoints (session cookies also work).
   if (!actor && req.method === 'GET' && req.path.endsWith('/stream')) {
-    const qt = req.query.access_token;
+    const qt = qs(req.query.access_token);
     if (typeof qt === 'string' && qt) actor = await actorFromBearer(qt);
   }
   return actor;
@@ -252,7 +253,8 @@ export function projectAllowed(actor: Actor, projectKey: string): boolean {
 
 export function requireProjectScope(paramKey = 'projectKey') {
   return (req: Request, res: Response, next: NextFunction) => {
-    const key = req.params[paramKey] ?? (req.query.project as string | undefined);
+    const raw = req.params[paramKey];
+    const key = (raw ? ps(raw) : undefined) ?? (qs(req.query.project) as string | undefined);
     if (key && req.actor && !projectAllowed(req.actor, key)) {
       res.status(404).json(jiraError(['Project does not exist or you do not have permission to see it.']));
       return;

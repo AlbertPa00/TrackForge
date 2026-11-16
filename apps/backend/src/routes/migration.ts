@@ -1,3 +1,4 @@
+import { ps } from '../lib/validation.js';
 import { Router, type Router as RouterType } from 'express';
 import { z } from 'zod';
 import { startImport, getImport, listImports, resumeImport } from '../import/service.js';
@@ -173,22 +174,22 @@ migrationRouter.get(
   '/migration/export/:projectKey',
   ah(async (req, res) => {
     const { projectToFixture } = await import('../import/export.js');
-    const fixture = await projectToFixture(req.params.projectKey);
-    res.json({ projectKey: req.params.projectKey, fixture });
+    const fixture = await projectToFixture(ps(req.params.projectKey));
+    res.json({ projectKey: ps(req.params.projectKey), fixture });
   })
 );
 
 migrationRouter.get(
   '/migration/:id',
   ah(async (req, res) => {
-    res.json(await getImport(req.params.id));
+    res.json(await getImport(ps(req.params.id)));
   })
 );
 
 migrationRouter.post(
   '/migration/:id/resume',
   ah(async (req, res) => {
-    await resumeImport(req.params.id);
-    res.status(202).json(await getImport(req.params.id));
+    await resumeImport(ps(req.params.id));
+    res.status(202).json(await getImport(ps(req.params.id)));
   })
 );

@@ -1,3 +1,4 @@
+import { ps } from '../lib/validation.js';
 import { Router, type Router as RouterType } from 'express';
 import {
   createProject,
@@ -11,7 +12,7 @@ import {
   toProjectResponse,
   projectIssueTypes,
 } from '../services/projectService.js';
-import { createProjectSchema, updateProjectSchema, formatZodErrors } from '../lib/validation.js';
+import { qs, createProjectSchema, updateProjectSchema, formatZodErrors } from '../lib/validation.js';
 import { jiraError } from '../lib/errors.js';
 import { requireAdmin, projectAllowed } from '../middleware/auth.js';
 import { hasPermission, nonBrowsableProjectIds } from '../services/permissionService.js';
@@ -40,8 +41,8 @@ router.get(
   '/',
   ah(async (req, res) => {
     const projects = await listProjects({
-      includeArchived: String(req.query.includeArchived ?? '') === 'true',
-      categoryId: req.query.categoryId ? String(req.query.categoryId) : undefined,
+      includeArchived: String(qs(req.query.includeArchived) ?? '') === 'true',
+      categoryId: qs(req.query.categoryId) ? String(qs(req.query.categoryId)) : undefined,
     });
     const denied = new Set(await nonBrowsableProjectIds(req.actor!));
     const allowed = projects.filter((p) => projectAllowed(req.actor!, p.key) && !denied.has(p.id));
@@ -52,7 +53,7 @@ router.get(
 router.get(
   '/:key',
   ah(async (req, res) => {
-    const key = req.params.key.toUpperCase();
+    const key = ps(req.params.key).toUpperCase();
     if (!projectAllowed(req.actor!, key)) {
       res.status(404).json(jiraError(['Project does not exist or you do not have permission to see it.']));
       return;
@@ -71,7 +72,7 @@ router.get(
 router.get(
   '/:key/statuses',
   ah(async (req, res) => {
-    const key = req.params.key.toUpperCase();
+    const key = ps(req.params.key).toUpperCase();
     if (!projectAllowed(req.actor!, key)) {
       res.status(404).json(jiraError(['Project does not exist or you do not have permission to see it.']));
       return;
@@ -88,7 +89,7 @@ router.get(
 router.put(
   '/:key',
   ah(async (req, res) => {
-    const key = req.params.key.toUpperCase();
+    const key = ps(req.params.key).toUpperCase();
     if (!projectAllowed(req.actor!, key)) {
       res.status(404).json(jiraError(['Project does not exist or you do not have permission to see it.']));
       return;
@@ -124,7 +125,7 @@ router.post(
   '/:key/archive',
   requireAdmin,
   ah(async (req, res) => {
-    const project = await archiveProject(req.params.key.toUpperCase());
+    const project = await archiveProject(ps(req.params.key).toUpperCase());
     await audit(req, 'project.archived', 'project', project.key);
     res.json(toProjectResponse(project));
   })
@@ -134,7 +135,7 @@ router.post(
   '/:key/restore',
   requireAdmin,
   ah(async (req, res) => {
-    const project = await restoreProject(req.params.key.toUpperCase());
+    const project = await restoreProject(ps(req.params.key).toUpperCase());
     await audit(req, 'project.restored', 'project', project.key);
     res.json(toProjectResponse(project));
   })
@@ -147,7 +148,7 @@ router.delete(
   '/:key',
   requireAdmin,
   ah(async (req, res) => {
-    const key = req.params.key.toUpperCase();
+    const key = ps(req.params.key).toUpperCase();
     const { prisma } = await import('../prisma.js');
     const project = await getProjectByKey(key);
     const issueCount = await prisma.issue.count({ where: { projectId: project.id } });
@@ -163,7 +164,7 @@ router.delete(
       return;
     }
     const { consumeConfirmToken } = await import('../lib/confirmToken.js');
-    const raw = String(req.query.confirmToken ?? req.headers['x-confirm-token'] ?? '') || undefined;
+    const raw = String(qs(req.query.confirmToken) ?? req.headers['x-confirm-token'] ?? '') || undefined;
     if (!(await consumeConfirmToken('project-delete', project.id, raw))) {
       res.status(400).json(
         jiraError([], {

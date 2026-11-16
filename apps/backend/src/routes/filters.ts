@@ -1,3 +1,4 @@
+import { ps } from '../lib/validation.js';
 import { Router, type Router as RouterType, type Request, type NextFunction } from 'express';
 import {
   createFilter,
@@ -17,7 +18,7 @@ import {
 } from '../services/filterService.js';
 import { executeSearch } from '../services/searchService.js';
 import { jiraError } from '../lib/errors.js';
-import { formatZodErrors, filterSchema, createFilterSchema } from '../lib/validation.js';
+import { qs, formatZodErrors, filterSchema, createFilterSchema } from '../lib/validation.js';
 import { JqlParseError } from '../jql/parser.js';
 import { JiraApiError } from '../lib/errors.js';
 import type { Response } from 'express';
@@ -76,7 +77,7 @@ router.get('/favorite', listFavourites);
 router.get(
   '/search',
   ah(async (req, res) => {
-    const name = String(req.query.filterName ?? '');
+    const name = String(qs(req.query.filterName) ?? '');
     res.json(await listVisibleFilters(req.actor!, name));
   })
 );
@@ -99,14 +100,14 @@ router.put(
 router.get(
   '/:id',
   ah(async (req, res) => {
-    res.json(await getFilter(req.actor!, req.params.id));
+    res.json(await getFilter(req.actor!, ps(req.params.id)));
   })
 );
 
 // GET /filter/{id}/run — convenience: execute a saved filter
 router.get('/:id/run', async (req, res, next) => {
   try {
-    const filter = await getFilter(req.actor!, req.params.id);
+    const filter = await getFilter(req.actor!, ps(req.params.id));
     const { startAt, maxResults } = pageParams(req, { cap: 100, default: 50 });
     res.json(
       await executeSearch(req.actor!, {
@@ -141,7 +142,7 @@ router.put('/:id', async (req, res, next) => {
           ? 'all'
           : 'private'
         : undefined);
-    res.json(await updateFilter(req.actor!, req.params.id, { ...parsed.data, visibility }));
+    res.json(await updateFilter(req.actor!, ps(req.params.id), { ...parsed.data, visibility }));
   } catch (err) {
     if (!handleJqlParse(res, err)) next(err);
   }
@@ -151,7 +152,7 @@ router.put('/:id', async (req, res, next) => {
 router.delete(
   '/:id',
   ah(async (req, res) => {
-    await deleteFilter(req.actor!, req.params.id);
+    await deleteFilter(req.actor!, ps(req.params.id));
     res.status(204).send();
   })
 );
@@ -160,28 +161,28 @@ router.delete(
 router.get(
   '/:id/permission',
   ah(async (req, res) => {
-    res.json(await listSharePermissions(req.actor!, req.params.id));
+    res.json(await listSharePermissions(req.actor!, ps(req.params.id)));
   })
 );
 
 router.post(
   '/:id/permission',
   ah(async (req, res) => {
-    res.status(201).json(await addSharePermission(req.actor!, req.params.id, req.body ?? {}));
+    res.status(201).json(await addSharePermission(req.actor!, ps(req.params.id), req.body ?? {}));
   })
 );
 
 router.get(
   '/:id/permission/:permId',
   ah(async (req, res) => {
-    res.json(await getSharePermission(req.actor!, req.params.id, req.params.permId));
+    res.json(await getSharePermission(req.actor!, ps(req.params.id), ps(req.params.permId)));
   })
 );
 
 router.delete(
   '/:id/permission/:permId',
   ah(async (req, res) => {
-    await deleteSharePermission(req.actor!, req.params.id, req.params.permId);
+    await deleteSharePermission(req.actor!, ps(req.params.id), ps(req.params.permId));
     res.status(204).send();
   })
 );
@@ -190,14 +191,14 @@ router.delete(
 router.put(
   '/:id/favourite',
   ah(async (req, res) => {
-    res.json(await setFavourite(req.actor!, req.params.id, true));
+    res.json(await setFavourite(req.actor!, ps(req.params.id), true));
   })
 );
 
 router.delete(
   '/:id/favourite',
   ah(async (req, res) => {
-    res.json(await setFavourite(req.actor!, req.params.id, false));
+    res.json(await setFavourite(req.actor!, ps(req.params.id), false));
   })
 );
 

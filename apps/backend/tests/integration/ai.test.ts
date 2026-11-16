@@ -892,6 +892,7 @@ describe('copilot', () => {
 
 describe('ai outcomes (047)', () => {
   it('POST /ai/outcome records per-feature counts on /usage', async () => {
+    await configureAi();
     await a.post('/api/internal/ai/outcome').send({ feature: 'draft', outcome: 'accepted' }).expect(204);
     await a.post('/api/internal/ai/outcome').send({ feature: 'draft', outcome: 'discarded' }).expect(204);
     await a.post('/api/internal/ai/outcome').send({ feature: 'plan', outcome: 'accepted' }).expect(204);

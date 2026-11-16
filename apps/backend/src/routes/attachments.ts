@@ -1,3 +1,4 @@
+import { ps } from '../lib/validation.js';
 /**
  * Sprint 018 — Jira attachment API (US1/US2).
  *   POST   /rest/api/2/issue/:key/attachments   (multipart, X-Atlassian-Token: no-check)
@@ -76,7 +77,7 @@ attachmentsRouter.post(
   '/:key/attachments',
   multipart,
   ah(async (req, res) => {
-    const issue = await loadIssueScoped(req.params.key, req.actor!);
+    const issue = await loadIssueScoped(ps(req.params.key), req.actor!);
     if (!issue) return;
     await requireIssuePermission(req.actor!, 'CREATE_ATTACHMENTS', issue);
     const files = (req.files as Express.Multer.File[]) ?? [];
@@ -98,7 +99,7 @@ attachmentRouter.get('/meta', (_req, res) => {
 attachmentRouter.get(
   '/:id',
   ah(async (req, res) => {
-    const scoped = await loadAttachmentScoped(req.params.id, req.actor!);
+    const scoped = await loadAttachmentScoped(ps(req.params.id), req.actor!);
     if (!scoped) return;
     const full = await prisma.attachment.findUniqueOrThrow({ where: { id: scoped.att.id }, include: { author: true } });
     res.json(toAttachmentResponse(full));
@@ -108,7 +109,7 @@ attachmentRouter.get(
 attachmentRouter.get(
   '/content/:id',
   ah(async (req, res) => {
-    const scoped = await loadAttachmentScoped(req.params.id, req.actor!);
+    const scoped = await loadAttachmentScoped(ps(req.params.id), req.actor!);
     if (!scoped) return;
     const { buffer, headers } = await serveContent(scoped.att);
     res.set(headers).send(buffer);
@@ -118,7 +119,7 @@ attachmentRouter.get(
 attachmentRouter.get(
   '/thumbnail/:id',
   ah(async (req, res) => {
-    const scoped = await loadAttachmentScoped(req.params.id, req.actor!);
+    const scoped = await loadAttachmentScoped(ps(req.params.id), req.actor!);
     if (!scoped) return;
     const thumb = await serveThumbnail(scoped.att);
     if (!thumb) {
@@ -131,7 +132,7 @@ attachmentRouter.get(
 attachmentRouter.delete(
   '/:id',
   ah(async (req, res) => {
-    const scoped = await loadAttachmentScoped(req.params.id, req.actor!);
+    const scoped = await loadAttachmentScoped(ps(req.params.id), req.actor!);
     if (!scoped) return;
     const issue = await getIssueByKey(scoped.issueKey);
     // Jira: own uploads → DELETE_OWN_ATTACHMENTS; others → DELETE_ALL_ATTACHMENTS.

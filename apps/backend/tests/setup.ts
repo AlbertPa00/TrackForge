@@ -10,6 +10,7 @@ import {
 } from '../src/seed.js';
 import { getDurableRunner } from '../src/lib/jobs.js';
 import { invalidateJqlCtxCache } from '../src/jql/ctxCache.js';
+import { invalidateAiSettingsCache } from '../src/lib/ai.js';
 import { ensureTestAuth } from './request.js';
 
 // Every supertest request used to open AND close its own loopback socket
@@ -65,6 +66,7 @@ async function seedAll(seeds: Promise<unknown>[]) {
 
 beforeEach(async () => {
   invalidateJqlCtxCache(); // wiped metadata must not leak through the JQL snapshot
+  invalidateAiSettingsCache(); // 15s getAiSettings cache must not leak across the wipe
   // Detached durable jobs (attachment purges/thumbnails, import/bulk replays)
   // outlive the test that enqueued them — including setTimeout retries — and
   // their writes deadlock the wipe. Flush in-flight work and cancel pending

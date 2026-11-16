@@ -1,3 +1,4 @@
+import { ps } from '../lib/validation.js';
 // Sprint 031 — screens / screen schemes / issue-type screen schemes (US1).
 // Jira read shapes under /rest/api/2/screens; full CRUD under /api/internal
 // (admin-gated) + project ITSS assignment.
@@ -35,6 +36,7 @@ import {
 } from '../services/fieldConfigService.js';
 import { prisma } from '../prisma.js';
 import { ah } from '../lib/http.js';
+import { qs } from '../lib/validation.js';
 
 export const screensJiraRouter: RouterType = Router(); // /rest/api/2/screens
 export const screensAdminRouter: RouterType = Router(); // /api/internal/screens|screenschemes|issuetypescreenschemes
@@ -89,7 +91,7 @@ screensJiraRouter.get(
 screensJiraRouter.get(
   '/:id',
   ah(async (req, res) => {
-    const s = (await listScreens()).find((x) => x.id === req.params.id);
+    const s = (await listScreens()).find((x) => x.id === ps(req.params.id));
     if (!s) throw new JiraApiError(404, jiraError(['Screen does not exist.']));
     res.json(screenJson(s));
   })
@@ -97,7 +99,7 @@ screensJiraRouter.get(
 screensJiraRouter.get(
   '/:id/tabs',
   ah(async (req, res) => {
-    const s = (await listScreens()).find((x) => x.id === req.params.id);
+    const s = (await listScreens()).find((x) => x.id === ps(req.params.id));
     if (!s) throw new JiraApiError(404, jiraError(['Screen does not exist.']));
     res.json(screenJson(s).tabs);
   })
@@ -123,14 +125,14 @@ screensAdminRouter.put(
   '/screens/:id',
   requireAdmin,
   ah(async (req, res) => {
-    res.json(await updateScreen(req.params.id, body(screenSchema.partial(), req)));
+    res.json(await updateScreen(ps(req.params.id), body(screenSchema.partial(), req)));
   })
 );
 screensAdminRouter.delete(
   '/screens/:id',
   requireAdmin,
   ah(async (req, res) => {
-    await deleteScreen(req.params.id);
+    await deleteScreen(ps(req.params.id));
     res.status(204).end();
   })
 );
@@ -139,7 +141,7 @@ screensAdminRouter.put(
   requireAdmin,
   ah(async (req, res) => {
     const { tabs } = body(z.object({ tabs: z.array(tabSchema) }), req);
-    res.json(await setScreenTabs(req.params.id, tabs));
+    res.json(await setScreenTabs(ps(req.params.id), tabs));
   })
 );
 
@@ -161,14 +163,14 @@ screensAdminRouter.put(
   '/screenschemes/:id',
   requireAdmin,
   ah(async (req, res) => {
-    res.json(await updateScreenScheme(req.params.id, body(screenSchemeSchema.partial(), req)));
+    res.json(await updateScreenScheme(ps(req.params.id), body(screenSchemeSchema.partial(), req)));
   })
 );
 screensAdminRouter.delete(
   '/screenschemes/:id',
   requireAdmin,
   ah(async (req, res) => {
-    await deleteScreenScheme(req.params.id);
+    await deleteScreenScheme(ps(req.params.id));
     res.status(204).end();
   })
 );
@@ -191,14 +193,14 @@ screensAdminRouter.put(
   '/issuetypescreenschemes/:id',
   requireAdmin,
   ah(async (req, res) => {
-    res.json(await updateIssueTypeScreenScheme(req.params.id, body(itssSchema.partial(), req)));
+    res.json(await updateIssueTypeScreenScheme(ps(req.params.id), body(itssSchema.partial(), req)));
   })
 );
 screensAdminRouter.delete(
   '/issuetypescreenschemes/:id',
   requireAdmin,
   ah(async (req, res) => {
-    await deleteIssueTypeScreenScheme(req.params.id);
+    await deleteIssueTypeScreenScheme(ps(req.params.id));
     res.status(204).end();
   })
 );
@@ -210,7 +212,7 @@ projectScreensRouter.post(
   requireAdmin,
   ah(async (req, res) => {
     const { schemeId } = body(z.object({ schemeId: z.string().nullable() }), req);
-    res.json(await assignIssueTypeScreenScheme(req.params.key, schemeId));
+    res.json(await assignIssueTypeScreenScheme(ps(req.params.key), schemeId));
   })
 );
 
@@ -219,13 +221,13 @@ projectScreensRouter.get(
   '/:key/issuetypescreenscheme/resolved',
   requireAdmin,
   ah(async (req, res) => {
-    const p = await prisma.project.findUnique({ where: { key: req.params.key.toUpperCase() } });
+    const p = await prisma.project.findUnique({ where: { key: ps(req.params.key).toUpperCase() } });
     if (!p) throw new JiraApiError(404, jiraError(['Project does not exist.']));
     const { screenFieldSet } = await import('../services/screenService.js');
     const fields = await screenFieldSet(
       p.id,
-      (req.query.issueTypeId as string | undefined) ?? null,
-      (req.query.op as 'create' | 'edit' | 'view' | undefined) ?? 'view'
+      (qs(req.query.issueTypeId) as string | undefined) ?? null,
+      (qs(req.query.op) as 'create' | 'edit' | 'view' | undefined) ?? 'view'
     );
     res.json({ fields: fields ? [...fields] : null });
   })
@@ -281,7 +283,7 @@ fieldConfigJiraRouter.get(
 fieldConfigJiraRouter.get(
   '/:id',
   ah(async (req, res) => {
-    const c = (await listFieldConfigurations()).find((x) => x.id === req.params.id);
+    const c = (await listFieldConfigurations()).find((x) => x.id === ps(req.params.id));
     if (!c) throw new JiraApiError(404, jiraError(['Field configuration does not exist.']));
     res.json(c);
   })
@@ -305,14 +307,14 @@ screensAdminRouter.put(
   '/fieldconfigurations/:id',
   requireAdmin,
   ah(async (req, res) => {
-    res.json(await updateFieldConfiguration(req.params.id, body(fcSchema.partial(), req)));
+    res.json(await updateFieldConfiguration(ps(req.params.id), body(fcSchema.partial(), req)));
   })
 );
 screensAdminRouter.delete(
   '/fieldconfigurations/:id',
   requireAdmin,
   ah(async (req, res) => {
-    await deleteFieldConfiguration(req.params.id);
+    await deleteFieldConfiguration(ps(req.params.id));
     res.status(204).end();
   })
 );
@@ -335,14 +337,14 @@ screensAdminRouter.put(
   '/fieldconfigurationschemes/:id',
   requireAdmin,
   ah(async (req, res) => {
-    res.json(await updateFieldConfigurationScheme(req.params.id, body(fcsSchema.partial(), req)));
+    res.json(await updateFieldConfigurationScheme(ps(req.params.id), body(fcsSchema.partial(), req)));
   })
 );
 screensAdminRouter.delete(
   '/fieldconfigurationschemes/:id',
   requireAdmin,
   ah(async (req, res) => {
-    await deleteFieldConfigurationScheme(req.params.id);
+    await deleteFieldConfigurationScheme(ps(req.params.id));
     res.status(204).end();
   })
 );
@@ -352,7 +354,7 @@ projectScreensRouter.post(
   requireAdmin,
   ah(async (req, res) => {
     const { schemeId } = body(z.object({ schemeId: z.string().nullable() }), req);
-    res.json(await assignFieldConfigurationScheme(req.params.key, schemeId));
+    res.json(await assignFieldConfigurationScheme(ps(req.params.key), schemeId));
   })
 );
 
@@ -382,14 +384,14 @@ screensAdminRouter.put(
   '/issuetypeschemes/:id',
   requireAdmin,
   ah(async (req, res) => {
-    res.json(await updateScheme(req.params.id, body(itsSchema.partial(), req)));
+    res.json(await updateScheme(ps(req.params.id), body(itsSchema.partial(), req)));
   })
 );
 screensAdminRouter.delete(
   '/issuetypeschemes/:id',
   requireAdmin,
   ah(async (req, res) => {
-    await deleteScheme(req.params.id);
+    await deleteScheme(ps(req.params.id));
     res.status(204).end();
   })
 );
@@ -400,7 +402,7 @@ projectScreensRouter.post(
   ah(async (req, res) => {
     const { schemeId } = body(z.object({ schemeId: z.string().nullable() }), req);
     const project = await prisma.project.update({
-      where: { key: req.params.key },
+      where: { key: ps(req.params.key) },
       data: { issueTypeSchemeId: schemeId },
     });
     res.json({ id: project.id, issueTypeSchemeId: project.issueTypeSchemeId });

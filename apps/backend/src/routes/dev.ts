@@ -1,3 +1,4 @@
+import { ps } from '../lib/validation.js';
 // Sprint 038: signed dev-webhook receivers, repo admin, issue panel data.
 import { Router, type Router as RouterType } from 'express';
 import express from 'express';
@@ -32,10 +33,13 @@ export const devReceiverRouter: RouterType = Router();
 // (gitlab/connections, repositories/:id) are not shadowed by this catch-all,
 // and read Bitbucket's actual signature header (X-Hub-Signature).
 devReceiverRouter.post(
-  '/:repoId/:provider(github|gitlab|bitbucket)',
+  '/:repoId/:provider',
   express.text({ type: '*/*', limit: '1mb' }),
-  ah(async (req, res) => {
-    const provider = req.params.provider;
+  ah(async (req, res, next) => {
+    const provider = ps(req.params.provider);
+    // path-to-regexp v8 dropped inline param regexes — the allowlist gate
+    // keeps the same fall-through semantics for admin paths.
+    if (provider !== 'github' && provider !== 'gitlab' && provider !== 'bitbucket') return next();
     const sig =
       req.headers['x-hub-signature-256'] ??
       req.headers['x-gitlab-token'] ??
@@ -46,8 +50,8 @@ devReceiverRouter.post(
     const eventUuid = String(req.headers['x-gitlab-event-uuid'] ?? '');
     const result =
       provider === 'gitlab'
-        ? await ingestGitlabSigned(req.params.repoId, String(sig ?? ''), raw, eventUuid)
-        : await ingest(req.params.repoId, provider, raw, String(sig ?? ''));
+        ? await ingestGitlabSigned(ps(req.params.repoId), String(sig ?? ''), raw, eventUuid)
+        : await ingest(ps(req.params.repoId), provider, raw, String(sig ?? ''));
     res.status(202).json(result); // queued semantics — items already persisted
   })
 );
@@ -108,7 +112,7 @@ devAdminRouter.put(
     if (!parsed.success) throw new JiraApiError(400, jiraError([], formatZodErrors(parsed.error)));
     const { webhookSecret, ...rest } = parsed.data;
     const r = await prisma.devRepository.update({
-      where: { id: req.params.id },
+      where: { id: ps(req.params.id) },
       data: {
         ...rest,
         ...(webhookSecret ? { webhookSecret: encryptSecret(webhookSecret) } : {}),
@@ -121,7 +125,7 @@ devAdminRouter.put(
 devAdminRouter.delete(
   '/:id',
   ah(async (req, res) => {
-    await prisma.devRepository.delete({ where: { id: req.params.id } });
+    await prisma.devRepository.delete({ where: { id: ps(req.params.id) } });
     res.status(204).end();
   })
 );
@@ -131,7 +135,7 @@ devAdminRouter.get(
   ah(async (req, res) => {
     res.json(
       await prisma.devDelivery.findMany({
-        where: { repoId: req.params.id },
+        where: { repoId: ps(req.params.id) },
         orderBy: { createdAt: 'desc' },
         take: 50,
         select: { id: true, deliveryId: true, status: true, error: true, createdAt: true },
@@ -144,8 +148,8 @@ devAdminRouter.get(
 devAdminRouter.post(
   '/:id/deliveries/:deliveryId/reprocess',
   ah(async (req, res) => {
-    const d = await prisma.devDelivery.findUnique({ where: { id: req.params.deliveryId } });
-    if (!d || d.repoId !== req.params.id) throw new JiraApiError(404, jiraError(['Delivery not found.']));
+    const d = await prisma.devDelivery.findUnique({ where: { id: ps(req.params.deliveryId) } });
+    if (!d || d.repoId !== ps(req.params.id)) throw new JiraApiError(404, jiraError(['Delivery not found.']));
     const out = await reprocessDelivery(d.id);
     await audit(req, 'dev.delivery.reprocess', 'DevRepository', d.repoId, { deliveryId: d.deliveryId, ...out });
     res.json(out);
@@ -157,7 +161,7 @@ devAdminRouter.get(
   ah(async (req, res) => {
     res.json(
       await prisma.developmentItem.findMany({
-        where: { repoId: req.params.id, issues: { none: {} } },
+        where: { repoId: ps(req.params.id), issues: { none: {} } },
         orderBy: { createdAt: 'desc' },
         take: 50,
         select: { id: true, type: true, title: true, state: true, createdAt: true },
@@ -181,8 +185,8 @@ devIssueRouter.get(
   '/:key/development',
   requireAuth,
   ah(async (req, res) => {
-    await requireDevTools(req.params.key, req);
-    res.json(await panelData(req.params.key));
+    await requireDevTools(ps(req.params.key), req);
+    res.json(await panelData(ps(req.params.key)));
   })
 );
 
@@ -210,13 +214,13 @@ devIssueRouter.post(
       })
       .safeParse(req.body ?? {});
     if (!parsed.success) throw new JiraApiError(400, jiraError([], formatZodErrors(parsed.error)));
-    const issue = await requireDevTools(req.params.key, req);
+    const issue = await requireDevTools(ps(req.params.key), req);
     const repo = await pickGitlabRepo(parsed.data.connectionId);
-    const name = parsed.data.name ?? branchNameFor(req.params.key, issue.summary ?? 'branch');
+    const name = parsed.data.name ?? branchNameFor(ps(req.params.key), issue.summary ?? 'branch');
     if (parsed.data.dryRun) return res.json({ dryRun: true, name, ref: parsed.data.ref, connectionId: repo.id });
-    const out = await createBranch(repo.id, { name, ref: parsed.data.ref, issueKey: req.params.key });
+    const out = await createBranch(repo.id, { name, ref: parsed.data.ref, issueKey: ps(req.params.key) });
     await audit(req, 'gitlab.branch.create', 'DevRepository', repo.id, {
-      issueKey: req.params.key,
+      issueKey: ps(req.params.key),
       name,
       ref: parsed.data.ref,
     });
@@ -238,12 +242,12 @@ devIssueRouter.post(
       })
       .safeParse(req.body ?? {});
     if (!parsed.success) throw new JiraApiError(400, jiraError([], formatZodErrors(parsed.error)));
-    const issue = await requireDevTools(req.params.key, req);
+    const issue = await requireDevTools(ps(req.params.key), req);
     const repo = await pickGitlabRepo(parsed.data.connectionId);
-    const title = parsed.data.title ?? `${req.params.key} ${issue.summary ?? ''}`.trim();
+    const title = parsed.data.title ?? `${ps(req.params.key)} ${issue.summary ?? ''}`.trim();
     if (parsed.data.dryRun) return res.json({ dryRun: true, title, ...parsed.data, connectionId: repo.id });
-    const out = await createMergeRequest(repo.id, { ...parsed.data, title, issueKey: req.params.key });
-    await audit(req, 'gitlab.mr.create', 'DevRepository', repo.id, { issueKey: req.params.key, title, ...parsed.data });
+    const out = await createMergeRequest(repo.id, { ...parsed.data, title, issueKey: ps(req.params.key) });
+    await audit(req, 'gitlab.mr.create', 'DevRepository', repo.id, { issueKey: ps(req.params.key), title, ...parsed.data });
     res.status(201).json({ ...out, title, connectionId: repo.id });
   })
 );
@@ -338,12 +342,12 @@ devGitlabRouter.put(
   ah(async (req, res) => {
     const parsed = gitlabConnSchema.partial().safeParse(req.body ?? {});
     if (!parsed.success) throw new JiraApiError(400, jiraError([], formatZodErrors(parsed.error)));
-    const existing = await prisma.devRepository.findUnique({ where: { id: req.params.id } });
+    const existing = await prisma.devRepository.findUnique({ where: { id: ps(req.params.id) } });
     if (!existing || existing.provider !== 'gitlab') throw new JiraApiError(404, jiraError(['Connection not found.']));
     const { apiTokenRef, groupPath, projectIds, mode, verifySsl, signingToken, webhookSecret, ...rest } = parsed.data;
     const cur = extras(existing);
     const r = await prisma.devRepository.update({
-      where: { id: req.params.id },
+      where: { id: ps(req.params.id) },
       data: {
         ...rest,
         ...(webhookSecret ? { webhookSecret: encryptSecret(webhookSecret) } : {}),
@@ -366,10 +370,10 @@ devGitlabRouter.put(
 devGitlabRouter.delete(
   '/:id',
   ah(async (req, res) => {
-    const r = await prisma.devRepository.findUnique({ where: { id: req.params.id } });
+    const r = await prisma.devRepository.findUnique({ where: { id: ps(req.params.id) } });
     if (!r || r.provider !== 'gitlab') throw new JiraApiError(404, jiraError(['Connection not found.']));
-    await prisma.devRepository.delete({ where: { id: req.params.id } });
-    await audit(req, 'gitlab.connection.delete', 'DevRepository', req.params.id, { name: r.name });
+    await prisma.devRepository.delete({ where: { id: ps(req.params.id) } });
+    await audit(req, 'gitlab.connection.delete', 'DevRepository', ps(req.params.id), { name: r.name });
     res.status(204).end();
   })
 );
@@ -377,7 +381,7 @@ devGitlabRouter.delete(
 devGitlabRouter.post(
   '/:id/test',
   ah(async (req, res) => {
-    const r = await prisma.devRepository.findUnique({ where: { id: req.params.id } });
+    const r = await prisma.devRepository.findUnique({ where: { id: ps(req.params.id) } });
     if (!r || r.provider !== 'gitlab') throw new JiraApiError(404, jiraError(['Connection not found.']));
     try {
       const out = await testConnection(r);
@@ -401,7 +405,7 @@ devGitlabRouter.post(
 devGitlabRouter.post(
   '/:id/backfill',
   ah(async (req, res) => {
-    const r = await prisma.devRepository.findUnique({ where: { id: req.params.id } });
+    const r = await prisma.devRepository.findUnique({ where: { id: ps(req.params.id) } });
     if (!r || r.provider !== 'gitlab') throw new JiraApiError(404, jiraError(['Connection not found.']));
     const job = await getDurableRunner().enqueue(
       'gitlab.backfill',
@@ -415,7 +419,7 @@ devGitlabRouter.post(
 devGitlabRouter.post(
   '/:id/sync',
   ah(async (req, res) => {
-    const r = await prisma.devRepository.findUnique({ where: { id: req.params.id } });
+    const r = await prisma.devRepository.findUnique({ where: { id: ps(req.params.id) } });
     if (!r || r.provider !== 'gitlab') throw new JiraApiError(404, jiraError(['Connection not found.']));
     res.json(await pollSync(r.id));
   })
@@ -424,7 +428,7 @@ devGitlabRouter.post(
 devGitlabRouter.get(
   '/:id/status',
   ah(async (req, res) => {
-    const r = await prisma.devRepository.findUnique({ where: { id: req.params.id } });
+    const r = await prisma.devRepository.findUnique({ where: { id: ps(req.params.id) } });
     if (!r || r.provider !== 'gitlab') throw new JiraApiError(404, jiraError(['Connection not found.']));
     res.json(gitlabView(r));
   })
@@ -448,7 +452,7 @@ devinfoRouter.delete(
   '/repository/:id/:entityType/:entityId',
   ah(async (req, res) => {
     const repo = await prisma.devRepository.findFirst({
-      where: { provider: 'gitlab', name: `devinfo-${req.params.id}` },
+      where: { provider: 'gitlab', name: `devinfo-${ps(req.params.id)}` },
     });
     if (!repo) throw new JiraApiError(404, jiraError(['Repository not found.']));
     const typeMap: Record<string, string> = {
@@ -461,9 +465,9 @@ devinfoRouter.delete(
       deployment: 'deployment',
       featureflag: 'feature_flag',
     };
-    const type = typeMap[req.params.entityType.toLowerCase()] ?? req.params.entityType;
+    const type = typeMap[ps(req.params.entityType).toLowerCase()] ?? ps(req.params.entityType);
     const del = await prisma.developmentItem.deleteMany({
-      where: { repoId: repo.id, type, externalId: req.params.entityId },
+      where: { repoId: repo.id, type, externalId: ps(req.params.entityId) },
     });
     res.status(202).json({ deleted: del.count });
   })

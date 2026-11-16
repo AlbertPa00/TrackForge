@@ -1,3 +1,4 @@
+import { ps } from '../lib/validation.js';
 // Sprint 029 — email & notification scheme endpoints.
 // Admin: scheme CRUD + project assignment + mail config/test + outbox.
 // User: prefs + filter subscriptions. Public: unsubscribe-by-token.
@@ -22,6 +23,7 @@ import {
   unsubscribe,
 } from '../services/mailService.js';
 import { ah, pageParams } from '../lib/http.js';
+import { qs } from '../lib/validation.js';
 
 export const notificationSchemeRouter: RouterType = Router(); // /api/internal/notificationschemes
 export const mailAdminRouter: RouterType = Router(); // /api/internal/admin
@@ -54,7 +56,7 @@ notificationSchemeRouter.get(
   '/:id',
   requireAdmin,
   ah(async (req, res) => {
-    const s = await prisma.notificationScheme.findUnique({ where: { id: req.params.id }, include: { entries: true } });
+    const s = await prisma.notificationScheme.findUnique({ where: { id: ps(req.params.id) }, include: { entries: true } });
     if (!s) throw new JiraApiError(404, jiraError(['Notification scheme does not exist.']));
     res.json(s);
   })
@@ -64,7 +66,7 @@ notificationSchemeRouter.put(
   '/:id',
   requireAdmin,
   ah(async (req, res) => {
-    res.json(await updateScheme(req.params.id, req.body ?? {}));
+    res.json(await updateScheme(ps(req.params.id), req.body ?? {}));
   })
 );
 
@@ -72,7 +74,7 @@ notificationSchemeRouter.delete(
   '/:id',
   requireAdmin,
   ah(async (req, res) => {
-    await deleteScheme(req.params.id);
+    await deleteScheme(ps(req.params.id));
     res.status(204).end();
   })
 );
@@ -83,7 +85,7 @@ projectSchemeRouter.post(
   '/:key/notificationscheme',
   requireAdmin,
   ah(async (req, res) => {
-    res.json(await assignScheme(req.params.key, (req.body?.schemeId as string) ?? null));
+    res.json(await assignScheme(ps(req.params.key), (req.body?.schemeId as string) ?? null));
   })
 );
 
@@ -140,7 +142,7 @@ mailAdminRouter.get(
   '/outbox',
   requireAdmin,
   ah(async (req, res) => {
-    const status = req.query.status ? String(req.query.status) : undefined;
+    const status = qs(req.query.status) ? String(qs(req.query.status)) : undefined;
     const [total, rows] = await Promise.all([
       prisma.emailOutbox.count({ where: status ? { status } : {} }),
       prisma.emailOutbox.findMany({
@@ -177,7 +179,7 @@ filterSubRouter.get(
   '/unsubscribe',
   ah(async (req, res) => {
     // authenticated variant — token identifies the subscription
-    const token = String(req.query.token ?? '');
+    const token = String(qs(req.query.token) ?? '');
     await unsubscribe(token);
     res.json({ ok: true });
   })
@@ -197,14 +199,14 @@ filterSubRouter.post(
     if (b.frequency !== 'daily' && b.frequency !== 'weekly') {
       throw new JiraApiError(400, jiraError(['frequency must be daily|weekly.']));
     }
-    res.status(201).json(await subscribeFilter(req.params.id, req.actor!, b));
+    res.status(201).json(await subscribeFilter(ps(req.params.id), req.actor!, b));
   })
 );
 
 filterSubRouter.delete(
   '/:id/subscriptions/:subId',
   ah(async (req, res) => {
-    const sub = await prisma.filterSubscription.findUnique({ where: { id: req.params.subId } });
+    const sub = await prisma.filterSubscription.findUnique({ where: { id: ps(req.params.subId) } });
     if (!sub || sub.userId !== req.actor!.user.id) {
       throw new JiraApiError(404, jiraError(['Subscription does not exist.']));
     }
@@ -225,7 +227,7 @@ const unsubPage = (token: string) => `<!doctype html><title>Unsubscribe</title>
 unsubRouter.get(
   '/',
   ah(async (req, res) => {
-    const token = String(req.query.token ?? '');
+    const token = String(qs(req.query.token) ?? '');
     if (!token) return res.status(404).type('html').send('<p>Subscription not found.</p>');
     res.type('html').send(unsubPage(token));
   })
@@ -236,7 +238,7 @@ unsubRouter.post(
   urlencoded({ extended: false, limit: '4kb' }),
   ah(async (req, res) => {
     try {
-      await unsubscribe(String(req.body?.token ?? req.query.token ?? ''));
+      await unsubscribe(String(req.body?.token ?? qs(req.query.token) ?? ''));
       res.type('html').send('<p>You have been unsubscribed.</p>');
     } catch {
       res.status(404).type('html').send('<p>Subscription not found or already removed.</p>');

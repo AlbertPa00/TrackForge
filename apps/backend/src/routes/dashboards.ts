@@ -1,3 +1,4 @@
+import { ps } from '../lib/validation.js';
 // Sprint 026 — Jira-shaped dashboard API + TrackForge data endpoints.
 // Mount order matters: /search and /gadgets must precede /:id.
 import { Router, type Router as RouterType } from 'express';
@@ -16,6 +17,7 @@ import {
   gadgetData,
   dashboardData,
 } from '../services/dashboardService.js';
+import { qs } from '../lib/validation.js';
 
 export const dashboardRouter: RouterType = Router();
 
@@ -39,8 +41,8 @@ dashboardRouter.get(
   '/search',
   ah(async (req, res) => {
     const all = await listDashboards(req.actor!);
-    const nameQ = String(req.query.dashboardName ?? '').toLowerCase();
-    const ownerQ = String(req.query.owner ?? '').toLowerCase();
+    const nameQ = String(qs(req.query.dashboardName) ?? '').toLowerCase();
+    const ownerQ = String(qs(req.query.owner) ?? '').toLowerCase();
     const filtered = all.filter(
       (d) =>
         (!nameQ || d.name.toLowerCase().includes(nameQ)) && (!ownerQ || d.owner.name.toLowerCase().includes(ownerQ))
@@ -65,21 +67,21 @@ dashboardRouter.get('/gadgets', (_req, res) => {
 dashboardRouter.get(
   '/:id',
   ah(async (req, res) => {
-    res.json(await getDashboard(req.actor!, req.params.id));
+    res.json(await getDashboard(req.actor!, ps(req.params.id)));
   })
 );
 
 dashboardRouter.put(
   '/:id',
   ah(async (req, res) => {
-    res.json(await updateDashboard(req.actor!, req.params.id, req.body ?? {}));
+    res.json(await updateDashboard(req.actor!, ps(req.params.id), req.body ?? {}));
   })
 );
 
 dashboardRouter.delete(
   '/:id',
   ah(async (req, res) => {
-    await deleteDashboard(req.actor!, req.params.id);
+    await deleteDashboard(req.actor!, ps(req.params.id));
     res.status(204).end();
   })
 );
@@ -87,28 +89,28 @@ dashboardRouter.delete(
 dashboardRouter.post(
   '/:id/copy',
   ah(async (req, res) => {
-    res.status(201).json(await copyDashboard(req.actor!, req.params.id, req.body?.name));
+    res.status(201).json(await copyDashboard(req.actor!, ps(req.params.id), req.body?.name));
   })
 );
 
 dashboardRouter.post(
   '/:id/gadget',
   ah(async (req, res) => {
-    res.status(201).json(await addGadget(req.actor!, req.params.id, req.body ?? {}));
+    res.status(201).json(await addGadget(req.actor!, ps(req.params.id), req.body ?? {}));
   })
 );
 
 dashboardRouter.put(
   '/:id/gadget/:gid',
   ah(async (req, res) => {
-    res.json(await updateGadget(req.actor!, req.params.id, req.params.gid, req.body ?? {}));
+    res.json(await updateGadget(req.actor!, ps(req.params.id), ps(req.params.gid), req.body ?? {}));
   })
 );
 
 dashboardRouter.delete(
   '/:id/gadget/:gid',
   ah(async (req, res) => {
-    await deleteGadget(req.actor!, req.params.id, req.params.gid);
+    await deleteGadget(req.actor!, ps(req.params.id), ps(req.params.gid));
     res.status(204).end();
   })
 );
@@ -119,13 +121,13 @@ export const dashboardDataRouter: RouterType = Router();
 dashboardDataRouter.get(
   '/dashboards/:id/data',
   ah(async (req, res) => {
-    res.json(await dashboardData(req.actor!, req.params.id));
+    res.json(await dashboardData(req.actor!, ps(req.params.id)));
   })
 );
 
 dashboardDataRouter.get(
   '/dashboards/:id/gadgets/:gid/data',
   ah(async (req, res) => {
-    res.json(await gadgetData(req.actor!, req.params.id, req.params.gid));
+    res.json(await gadgetData(req.actor!, ps(req.params.id), ps(req.params.gid)));
   })
 );

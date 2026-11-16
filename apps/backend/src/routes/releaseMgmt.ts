@@ -1,3 +1,4 @@
+import { ps } from '../lib/validation.js';
 import { Router, type Router as RouterType, type Request } from 'express';
 import { prisma } from '../prisma.js';
 import { JiraApiError, jiraError } from '../lib/errors.js';
@@ -20,6 +21,7 @@ import {
   toComponentResponse,
   toVersionResponse,
 } from '../services/componentVersionService.js';
+import { qs } from '../lib/validation.js';
 
 /** Sprint 019 — Jira component & version endpoints. */
 export const componentRouter: RouterType = Router(); // /rest/api/2/component
@@ -74,10 +76,10 @@ componentRouter.get(
   '/:id',
   ah(async (req, res) => {
     const c = await prisma.component.findUnique({
-      where: { id: req.params.id },
+      where: { id: ps(req.params.id) },
       include: { lead: { select: { id: true, displayName: true } }, project: { select: { key: true } } },
     });
-    if (!c) throw new JiraApiError(404, jiraError([`Component '${req.params.id}' does not exist.`], {}));
+    if (!c) throw new JiraApiError(404, jiraError([`Component '${ps(req.params.id)}' does not exist.`], {}));
     await assertProjectVisible(req.actor, c.project.key);
     res.json(toComponentResponse(c));
   })
@@ -87,13 +89,13 @@ componentRouter.put(
   '/:id',
   ah(async (req, res) => {
     const existing = await prisma.component.findUnique({
-      where: { id: req.params.id },
+      where: { id: ps(req.params.id) },
       include: { project: { select: { key: true } } },
     });
-    if (!existing) throw new JiraApiError(404, jiraError([`Component '${req.params.id}' does not exist.`], {}));
+    if (!existing) throw new JiraApiError(404, jiraError([`Component '${ps(req.params.id)}' does not exist.`], {}));
     await assertProjectVisible(req.actor, existing.project.key);
     await requireProjectAdmin(req.actor, existing.projectId);
-    const c = await updateComponent(req.params.id, req.body ?? {}, req.actor!);
+    const c = await updateComponent(ps(req.params.id), req.body ?? {}, req.actor!);
     res.json(toComponentResponse(c));
   })
 );
@@ -102,15 +104,15 @@ componentRouter.delete(
   '/:id',
   ah(async (req, res) => {
     const existing = await prisma.component.findUnique({
-      where: { id: req.params.id },
+      where: { id: ps(req.params.id) },
       include: { project: { select: { key: true } } },
     });
-    if (!existing) throw new JiraApiError(404, jiraError([`Component '${req.params.id}' does not exist.`], {}));
+    if (!existing) throw new JiraApiError(404, jiraError([`Component '${ps(req.params.id)}' does not exist.`], {}));
     await assertProjectVisible(req.actor, existing.project.key);
     await requireProjectAdmin(req.actor, existing.projectId);
     await deleteComponent(
-      req.params.id,
-      typeof req.query.moveIssuesTo === 'string' ? req.query.moveIssuesTo : undefined,
+      ps(req.params.id),
+      typeof qs(req.query.moveIssuesTo) === 'string' ? qs(req.query.moveIssuesTo) : undefined,
       req.actor!
     );
     res.status(204).end();
@@ -121,13 +123,13 @@ componentRouter.get(
   '/:id/relatedIssueCounts',
   ah(async (req, res) => {
     const c = await prisma.component.findUnique({
-      where: { id: req.params.id },
+      where: { id: ps(req.params.id) },
       include: { project: { select: { key: true } } },
     });
-    if (!c) throw new JiraApiError(404, jiraError([`Component '${req.params.id}' does not exist.`], {}));
+    if (!c) throw new JiraApiError(404, jiraError([`Component '${ps(req.params.id)}' does not exist.`], {}));
     await assertProjectVisible(req.actor, c.project.key);
-    const count = await prisma.issueComponent.count({ where: { componentId: req.params.id } });
-    res.json({ self: resourceSelf(`/rest/api/2/component/${req.params.id}`), issueCount: count });
+    const count = await prisma.issueComponent.count({ where: { componentId: ps(req.params.id) } });
+    res.json({ self: resourceSelf(`/rest/api/2/component/${ps(req.params.id)}`), issueCount: count });
   })
 );
 
@@ -148,10 +150,10 @@ versionRouter.get(
   '/:id',
   ah(async (req, res) => {
     const v = await prisma.version.findUnique({
-      where: { id: req.params.id },
+      where: { id: ps(req.params.id) },
       include: { project: { select: { key: true } } },
     });
-    if (!v) throw new JiraApiError(404, jiraError([`Version '${req.params.id}' does not exist.`], {}));
+    if (!v) throw new JiraApiError(404, jiraError([`Version '${ps(req.params.id)}' does not exist.`], {}));
     await assertProjectVisible(req.actor, v.project.key);
     res.json(toVersionResponse(v));
   })
@@ -161,13 +163,13 @@ versionRouter.put(
   '/:id',
   ah(async (req, res) => {
     const existing = await prisma.version.findUnique({
-      where: { id: req.params.id },
+      where: { id: ps(req.params.id) },
       include: { project: { select: { key: true } } },
     });
-    if (!existing) throw new JiraApiError(404, jiraError([`Version '${req.params.id}' does not exist.`], {}));
+    if (!existing) throw new JiraApiError(404, jiraError([`Version '${ps(req.params.id)}' does not exist.`], {}));
     await assertProjectVisible(req.actor, existing.project.key);
     await requireProjectAdmin(req.actor, existing.projectId);
-    const v = await updateVersion(req.params.id, req.body ?? {}, req.actor!);
+    const v = await updateVersion(ps(req.params.id), req.body ?? {}, req.actor!);
     res.json(toVersionResponse(v));
   })
 );
@@ -176,16 +178,16 @@ versionRouter.delete(
   '/:id',
   ah(async (req, res) => {
     const existing = await prisma.version.findUnique({
-      where: { id: req.params.id },
+      where: { id: ps(req.params.id) },
       include: { project: { select: { key: true } } },
     });
-    if (!existing) throw new JiraApiError(404, jiraError([`Version '${req.params.id}' does not exist.`], {}));
+    if (!existing) throw new JiraApiError(404, jiraError([`Version '${ps(req.params.id)}' does not exist.`], {}));
     await assertProjectVisible(req.actor, existing.project.key);
     await requireProjectAdmin(req.actor, existing.projectId);
     await deleteVersion(
-      req.params.id,
-      typeof req.query.moveFixIssuesTo === 'string' ? req.query.moveFixIssuesTo : undefined,
-      typeof req.query.moveAffectedIssuesTo === 'string' ? req.query.moveAffectedIssuesTo : undefined,
+      ps(req.params.id),
+      typeof qs(req.query.moveFixIssuesTo) === 'string' ? qs(req.query.moveFixIssuesTo) : undefined,
+      typeof qs(req.query.moveAffectedIssuesTo) === 'string' ? qs(req.query.moveAffectedIssuesTo) : undefined,
       req.actor!
     );
     res.status(204).end();
@@ -196,14 +198,14 @@ versionRouter.post(
   '/:id/move',
   ah(async (req, res) => {
     const existing = await prisma.version.findUnique({
-      where: { id: req.params.id },
+      where: { id: ps(req.params.id) },
       include: { project: { select: { key: true } } },
     });
-    if (!existing) throw new JiraApiError(404, jiraError([`Version '${req.params.id}' does not exist.`], {}));
+    if (!existing) throw new JiraApiError(404, jiraError([`Version '${ps(req.params.id)}' does not exist.`], {}));
     await assertProjectVisible(req.actor, existing.project.key);
     await requireProjectAdmin(req.actor, existing.projectId);
     const b = req.body ?? {};
-    const v = await moveVersion(req.params.id, b.position, b.after, req.actor!);
+    const v = await moveVersion(ps(req.params.id), b.position, b.after, req.actor!);
     res.json(toVersionResponse(v));
   })
 );
@@ -212,13 +214,13 @@ versionRouter.post(
   '/:id/release',
   ah(async (req, res) => {
     const existing = await prisma.version.findUnique({
-      where: { id: req.params.id },
+      where: { id: ps(req.params.id) },
       include: { project: { select: { key: true } } },
     });
-    if (!existing) throw new JiraApiError(404, jiraError([`Version '${req.params.id}' does not exist.`], {}));
+    if (!existing) throw new JiraApiError(404, jiraError([`Version '${ps(req.params.id)}' does not exist.`], {}));
     await assertProjectVisible(req.actor, existing.project.key);
     await requireProjectAdmin(req.actor, existing.projectId);
-    const v = await releaseVersion(req.params.id, req.body?.releaseDate, req.actor!);
+    const v = await releaseVersion(ps(req.params.id), req.body?.releaseDate, req.actor!);
     res.json(toVersionResponse(v));
   })
 );
@@ -227,13 +229,13 @@ versionRouter.get(
   '/:id/releasenotes',
   ah(async (req, res) => {
     const v = await prisma.version.findUnique({
-      where: { id: req.params.id },
+      where: { id: ps(req.params.id) },
       include: { project: { select: { key: true } } },
     });
-    if (!v) throw new JiraApiError(404, jiraError([`Version '${req.params.id}' does not exist.`], {}));
+    if (!v) throw new JiraApiError(404, jiraError([`Version '${ps(req.params.id)}' does not exist.`], {}));
     await assertProjectVisible(req.actor, v.project.key);
-    const notes = await releaseNotes(req.params.id);
-    if (req.query.format === 'csv') {
+    const notes = await releaseNotes(ps(req.params.id));
+    if (qs(req.query.format) === 'csv') {
       sendCsv(res, 'releasenotes', [
         ['type', 'key', 'summary'],
         ...notes.groups.flatMap((g) => g.issues.map((i) => [g.type, i.key, i.summary])),
@@ -248,13 +250,13 @@ versionRouter.get(
   '/:id/relatedIssueCounts',
   ah(async (req, res) => {
     const v = await prisma.version.findUnique({
-      where: { id: req.params.id },
+      where: { id: ps(req.params.id) },
       include: { project: { select: { key: true } } },
     });
-    if (!v) throw new JiraApiError(404, jiraError([`Version '${req.params.id}' does not exist.`], {}));
+    if (!v) throw new JiraApiError(404, jiraError([`Version '${ps(req.params.id)}' does not exist.`], {}));
     await assertProjectVisible(req.actor, v.project.key);
-    const c = await versionIssueCounts(req.params.id);
-    res.json({ self: resourceSelf(`/rest/api/2/version/${req.params.id}`), ...c });
+    const c = await versionIssueCounts(ps(req.params.id));
+    res.json({ self: resourceSelf(`/rest/api/2/version/${ps(req.params.id)}`), ...c });
   })
 );
 
@@ -262,15 +264,15 @@ versionRouter.get(
   '/:id/unresolvedIssueCount',
   ah(async (req, res) => {
     const v = await prisma.version.findUnique({
-      where: { id: req.params.id },
+      where: { id: ps(req.params.id) },
       include: { project: { select: { key: true } } },
     });
-    if (!v) throw new JiraApiError(404, jiraError([`Version '${req.params.id}' does not exist.`], {}));
+    if (!v) throw new JiraApiError(404, jiraError([`Version '${ps(req.params.id)}' does not exist.`], {}));
     await assertProjectVisible(req.actor, v.project.key);
     const unresolved = await prisma.issueVersion.count({
-      where: { versionId: req.params.id, kind: 'fix', issue: { status: { category: { not: 'done' } } } },
+      where: { versionId: ps(req.params.id), kind: 'fix', issue: { status: { category: { not: 'done' } } } },
     });
-    res.json({ self: resourceSelf(`/rest/api/2/version/${req.params.id}`), issuesUnresolvedCount: unresolved });
+    res.json({ self: resourceSelf(`/rest/api/2/version/${ps(req.params.id)}`), issuesUnresolvedCount: unresolved });
   })
 );
 
@@ -279,7 +281,7 @@ versionRouter.get(
 projectReleaseRouter.get(
   '/:key/components',
   ah(async (req, res) => {
-    const p = await projectByKey(req.params.key, req.actor);
+    const p = await projectByKey(ps(req.params.key), req.actor);
     res.json((await listComponents(p.id)).map(toComponentResponse));
   })
 );
@@ -287,7 +289,7 @@ projectReleaseRouter.get(
 projectReleaseRouter.get(
   '/:key/versions',
   ah(async (req, res) => {
-    const p = await projectByKey(req.params.key, req.actor);
+    const p = await projectByKey(ps(req.params.key), req.actor);
     res.json((await listVersions(p.id)).map(toVersionResponse));
   })
 );

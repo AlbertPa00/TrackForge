@@ -1,3 +1,4 @@
+import { ps } from '../lib/validation.js';
 // Admin CRUD for custom fields — TrackForge-native API (admin only).
 //
 //   GET    /api/internal/customfields                list (includeInactive?)
@@ -12,7 +13,7 @@
 import { Router, type Router as RouterType } from 'express';
 import { z } from 'zod';
 import { requireAdmin } from '../middleware/auth.js';
-import { formatZodErrors } from '../lib/validation.js';
+import { qs, formatZodErrors } from '../lib/validation.js';
 import { jiraError } from '../lib/errors.js';
 import { audit } from '../services/auditService.js';
 import * as cf from '../services/customFieldService.js';
@@ -106,7 +107,7 @@ function toAdminResponse(field: cf.FieldWithContexts) {
 customFieldsRouter.get(
   '/',
   ah(async (req, res) => {
-    const includeInactive = String(req.query.includeInactive ?? '') === 'true';
+    const includeInactive = String(qs(req.query.includeInactive) ?? '') === 'true';
     const fields = await cf.listFields(includeInactive);
     res.json({ fields: fields.map(toAdminResponse), types: CF_TYPES });
   })
@@ -134,7 +135,7 @@ customFieldsRouter.post(
 customFieldsRouter.get(
   '/:id',
   ah(async (req, res) => {
-    res.json(toAdminResponse(await cf.getField(req.params.id)));
+    res.json(toAdminResponse(await cf.getField(ps(req.params.id))));
   })
 );
 
@@ -147,7 +148,7 @@ customFieldsRouter.put(
       res.status(400).json(jiraError([], formatZodErrors(parsed.error)));
       return;
     }
-    const field = await cf.updateField(req.params.id, parsed.data);
+    const field = await cf.updateField(ps(req.params.id), parsed.data);
     await audit(req, 'customfield.update', 'customfield', field.id, parsed.data);
     res.json(toAdminResponse(field));
   })
@@ -159,13 +160,13 @@ customFieldsRouter.delete(
   requireAdmin,
   ah(async (req, res) => {
     if (isDryRun(req)) {
-      const preview = await cf.deleteField(req.params.id, true);
+      const preview = await cf.deleteField(ps(req.params.id), true);
       markDryRun(res);
       res.json(preview);
       return;
     }
-    const result = await cf.deleteField(req.params.id, false);
-    await audit(req, 'customfield.delete', 'customfield', req.params.id, result);
+    const result = await cf.deleteField(ps(req.params.id), false);
+    await audit(req, 'customfield.delete', 'customfield', ps(req.params.id), result);
     res.status(204).send();
   })
 );
@@ -183,8 +184,8 @@ customFieldsRouter.post(
       // No projects listed + not global = global context (Jira default).
       parsed.data.isGlobal = true;
     }
-    const field = await cf.upsertContext(req.params.id, parsed.data);
-    await audit(req, 'customfield.context.create', 'customfield', req.params.id, {
+    const field = await cf.upsertContext(ps(req.params.id), parsed.data);
+    await audit(req, 'customfield.context.create', 'customfield', ps(req.params.id), {
       projectKeys: parsed.data.projectKeys,
     });
     res.status(201).json(toAdminResponse(field));
@@ -200,9 +201,9 @@ customFieldsRouter.put(
       res.status(400).json(jiraError([], formatZodErrors(parsed.error)));
       return;
     }
-    const field = await cf.updateContext(req.params.id, req.params.ctxId, parsed.data);
-    await audit(req, 'customfield.context.update', 'customfield', req.params.id, {
-      contextId: req.params.ctxId,
+    const field = await cf.updateContext(ps(req.params.id), ps(req.params.ctxId), parsed.data);
+    await audit(req, 'customfield.context.update', 'customfield', ps(req.params.id), {
+      contextId: ps(req.params.ctxId),
     });
     res.json(toAdminResponse(field));
   })
@@ -212,9 +213,9 @@ customFieldsRouter.delete(
   '/:id/contexts/:ctxId',
   requireAdmin,
   ah(async (req, res) => {
-    const field = await cf.deleteContext(req.params.id, req.params.ctxId);
-    await audit(req, 'customfield.context.delete', 'customfield', req.params.id, {
-      contextId: req.params.ctxId,
+    const field = await cf.deleteContext(ps(req.params.id), ps(req.params.ctxId));
+    await audit(req, 'customfield.context.delete', 'customfield', ps(req.params.id), {
+      contextId: ps(req.params.ctxId),
     });
     res.json(toAdminResponse(field));
   })
@@ -224,8 +225,8 @@ customFieldsRouter.delete(
 customFieldsRouter.get(
   '/:id/options',
   ah(async (req, res) => {
-    const field = await cf.getField(req.params.id);
-    const projectKey = String(req.query.project ?? '').toUpperCase();
+    const field = await cf.getField(ps(req.params.id));
+    const projectKey = String(qs(req.query.project) ?? '').toUpperCase();
     let options;
     if (projectKey) {
       const project = await projectByKeyOr404(projectKey);

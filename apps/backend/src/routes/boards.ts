@@ -1,3 +1,4 @@
+import { ps } from '../lib/validation.js';
 import { Router, type Router as RouterType } from 'express';
 import { z } from 'zod';
 import {
@@ -20,7 +21,7 @@ import {
   updateQuickFilter,
 } from '../services/boardService.js';
 import { jiraError } from '../lib/errors.js';
-import { formatZodErrors } from '../lib/validation.js';
+import { qs, formatZodErrors } from '../lib/validation.js';
 import { enforceBoardScope, projectAllowed } from '../middleware/auth.js';
 import { hasPermission } from '../services/permissionService.js';
 import { prisma } from '../prisma.js';
@@ -31,7 +32,7 @@ const router: RouterType = Router();
 router.get(
   '/',
   ah(async (req, res) => {
-    const keyOrId = String(req.query.projectKeyOrId ?? '').trim();
+    const keyOrId = String(qs(req.query.projectKeyOrId) ?? '').trim();
     let boards = await listBoards(keyOrId || undefined);
     // Token allow-list + BROWSE_PROJECTS filter — scoped tokens see only their
     // projects' boards (Sprint 020 leak gate).
@@ -72,8 +73,8 @@ router.post(
 router.delete(
   '/:boardId',
   ah(async (req, res) => {
-    await enforceBoardScope(req.params.boardId, req.actor!);
-    await deleteBoard(req.actor!, req.params.boardId, req.query.promoteTo ? String(req.query.promoteTo) : undefined);
+    await enforceBoardScope(ps(req.params.boardId), req.actor!);
+    await deleteBoard(req.actor!, ps(req.params.boardId), qs(req.query.promoteTo) ? String(qs(req.query.promoteTo)) : undefined);
     res.status(204).end();
   })
 );
@@ -82,16 +83,16 @@ router.delete(
 router.get(
   '/:boardId/quickfilter',
   ah(async (req, res) => {
-    await enforceBoardScope(req.params.boardId, req.actor!);
-    res.json(await listQuickFilters(req.params.boardId));
+    await enforceBoardScope(ps(req.params.boardId), req.actor!);
+    res.json(await listQuickFilters(ps(req.params.boardId)));
   })
 );
 
 router.get(
   '/:boardId/quickfilter/:qfId',
   ah(async (req, res) => {
-    await enforceBoardScope(req.params.boardId, req.actor!);
-    res.json(await getQuickFilter(req.params.boardId, req.params.qfId));
+    await enforceBoardScope(ps(req.params.boardId), req.actor!);
+    res.json(await getQuickFilter(ps(req.params.boardId), ps(req.params.qfId)));
   })
 );
 
@@ -99,24 +100,24 @@ router.get(
 router.get(
   '/:boardId/cardconfig',
   ah(async (req, res) => {
-    await enforceBoardScope(req.params.boardId, req.actor!);
-    res.json(await getCardConfig(req.params.boardId));
+    await enforceBoardScope(ps(req.params.boardId), req.actor!);
+    res.json(await getCardConfig(ps(req.params.boardId)));
   })
 );
 
 router.get(
   '/:boardId',
   ah(async (req, res) => {
-    await enforceBoardScope(req.params.boardId, req.actor!);
-    res.json(await getBoard(req.params.boardId));
+    await enforceBoardScope(ps(req.params.boardId), req.actor!);
+    res.json(await getBoard(ps(req.params.boardId)));
   })
 );
 
 router.get(
   '/:boardId/configuration',
   ah(async (req, res) => {
-    await enforceBoardScope(req.params.boardId, req.actor!);
-    res.json(await getBoardConfiguration(req.params.boardId));
+    await enforceBoardScope(ps(req.params.boardId), req.actor!);
+    res.json(await getBoardConfiguration(ps(req.params.boardId)));
   })
 );
 
@@ -144,13 +145,13 @@ const typeSchema = z.object({ type: z.enum(['scrum', 'kanban']) });
 router.put(
   '/:boardId/configuration',
   ah(async (req, res) => {
-    await enforceBoardScope(req.params.boardId, req.actor!);
+    await enforceBoardScope(ps(req.params.boardId), req.actor!);
     const parsed = columnSchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json(jiraError([], formatZodErrors(parsed.error)));
       return;
     }
-    res.json(await updateBoardConfiguration(req.params.boardId, parsed.data.columns, req.actor));
+    res.json(await updateBoardConfiguration(ps(req.params.boardId), parsed.data.columns, req.actor));
   })
 );
 
@@ -158,13 +159,13 @@ router.put(
 router.put(
   '/:boardId/type',
   ah(async (req, res) => {
-    await enforceBoardScope(req.params.boardId, req.actor!);
+    await enforceBoardScope(ps(req.params.boardId), req.actor!);
     const parsed = typeSchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json(jiraError([], formatZodErrors(parsed.error)));
       return;
     }
-    res.json(await setBoardType(req.params.boardId, parsed.data.type, req.actor));
+    res.json(await setBoardType(ps(req.params.boardId), parsed.data.type, req.actor));
   })
 );
 
@@ -174,8 +175,8 @@ router.put(
 router.get(
   '/:boardId/reports',
   ah(async (req, res) => {
-    await enforceBoardScope(req.params.boardId, req.actor!);
-    const id = encodeURIComponent(req.params.boardId);
+    await enforceBoardScope(ps(req.params.boardId), req.actor!);
+    const id = encodeURIComponent(ps(req.params.boardId));
     res.json([
       { key: 'burndown', name: 'Burndown Chart', url: `/api/internal/reports/board/${id}/burndown` },
       { key: 'velocity', name: 'Velocity Chart', url: `/api/internal/reports/board/${id}/velocity` },
@@ -193,15 +194,15 @@ router.get(
 router.get(
   '/:boardId/issue',
   ah(async (req, res) => {
-    await enforceBoardScope(req.params.boardId, req.actor!);
+    await enforceBoardScope(ps(req.params.boardId), req.actor!);
     const { startAt, maxResults } = pageParams(req, { cap: 200, default: 200 });
-    const quickFilterIds = req.query.quickFilterIds
-      ? String(req.query.quickFilterIds)
+    const quickFilterIds = qs(req.query.quickFilterIds)
+      ? String(qs(req.query.quickFilterIds))
           .split(',')
           .map((s) => s.trim())
           .filter(Boolean)
       : undefined;
-    res.json(await listBoardIssues(req.params.boardId, { startAt, maxResults }, req.actor, { quickFilterIds }));
+    res.json(await listBoardIssues(ps(req.params.boardId), { startAt, maxResults }, req.actor, { quickFilterIds }));
   })
 );
 
@@ -224,67 +225,67 @@ const qfPatchSchema = qfSchema.partial();
 boardInternalRouter.put(
   '/:boardId',
   ah(async (req, res) => {
-    await enforceBoardScope(req.params.boardId, req.actor!);
+    await enforceBoardScope(ps(req.params.boardId), req.actor!);
     const parsed = renameSchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json(jiraError([], formatZodErrors(parsed.error)));
       return;
     }
-    res.json(await updateBoard(req.actor!, req.params.boardId, parsed.data));
+    res.json(await updateBoard(req.actor!, ps(req.params.boardId), parsed.data));
   })
 );
 
 boardInternalRouter.post(
   '/:boardId/default',
   ah(async (req, res) => {
-    await enforceBoardScope(req.params.boardId, req.actor!);
-    res.json(await setDefaultBoard(req.actor!, req.params.boardId));
+    await enforceBoardScope(ps(req.params.boardId), req.actor!);
+    res.json(await setDefaultBoard(req.actor!, ps(req.params.boardId)));
   })
 );
 
 boardInternalRouter.put(
   '/:boardId/cardconfig',
   ah(async (req, res) => {
-    await enforceBoardScope(req.params.boardId, req.actor!);
+    await enforceBoardScope(ps(req.params.boardId), req.actor!);
     if (typeof req.body !== 'object' || req.body === null || Array.isArray(req.body)) {
       res.status(400).json(jiraError([], { cardConfig: 'object expected' }));
       return;
     }
-    res.json(await setCardConfig(req.actor!, req.params.boardId, req.body));
+    res.json(await setCardConfig(req.actor!, ps(req.params.boardId), req.body));
   })
 );
 
 boardInternalRouter.post(
   '/:boardId/quickfilters',
   ah(async (req, res) => {
-    await enforceBoardScope(req.params.boardId, req.actor!);
+    await enforceBoardScope(ps(req.params.boardId), req.actor!);
     const parsed = qfSchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json(jiraError([], formatZodErrors(parsed.error)));
       return;
     }
-    res.status(201).json(await createQuickFilter(req.actor!, req.params.boardId, parsed.data));
+    res.status(201).json(await createQuickFilter(req.actor!, ps(req.params.boardId), parsed.data));
   })
 );
 
 boardInternalRouter.put(
   '/:boardId/quickfilters/:qfId',
   ah(async (req, res) => {
-    await enforceBoardScope(req.params.boardId, req.actor!);
+    await enforceBoardScope(ps(req.params.boardId), req.actor!);
     const parsed = qfPatchSchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json(jiraError([], formatZodErrors(parsed.error)));
       return;
     }
-    res.json(await updateQuickFilter(req.actor!, req.params.boardId, req.params.qfId, parsed.data));
+    res.json(await updateQuickFilter(req.actor!, ps(req.params.boardId), ps(req.params.qfId), parsed.data));
   })
 );
 
 boardInternalRouter.delete(
   '/:boardId/quickfilters/:qfId',
   ah(async (req, res) => {
-    await enforceBoardScope(req.params.boardId, req.actor!);
-    await deleteQuickFilter(req.actor!, req.params.boardId, req.params.qfId);
+    await enforceBoardScope(ps(req.params.boardId), req.actor!);
+    await deleteQuickFilter(req.actor!, ps(req.params.boardId), ps(req.params.qfId));
     res.status(204).end();
   })
 );

@@ -1,3 +1,4 @@
+import { ps } from '../lib/validation.js';
 import { Router, type Router as RouterType } from 'express';
 import { listStatuses, listPriorities, listIssueTypes, listFields } from '../services/metaService.js';
 import { getMyself } from '../services/userService.js';
@@ -123,7 +124,7 @@ router.post(
 router.delete(
   '/issueLink/:id',
   ah(async (req, res) => {
-    await deleteLink(req.params.id, req.actor!);
+    await deleteLink(ps(req.params.id), req.actor!);
     res.status(204).send();
   })
 );

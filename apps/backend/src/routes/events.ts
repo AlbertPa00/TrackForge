@@ -1,3 +1,4 @@
+import { ps } from '../lib/validation.js';
 // /api/internal/events — cursor-based event feed + SSE stream.
 // Visibility: token project allow-lists filter events to allowed projects.
 
@@ -10,6 +11,7 @@ import { sseSubscribe, eventIssueVisible } from '../services/sseHub.js';
 import { visibleProjectScope, canSeeProject } from '../services/visibilityService.js';
 import type { Actor } from '../lib/auth.js';
 import { ah } from '../lib/http.js';
+import { qs } from '../lib/validation.js';
 
 export const eventsRouter: RouterType = Router();
 
@@ -25,13 +27,13 @@ eventsRouter.get(
   '/events',
   ah(async (req: Request, res: Response) => {
     const actor = req.actor!;
-    const after = Math.max(0, Number(req.query.after) || 0);
-    const limit = Math.min(500, Math.max(1, Number(req.query.limit ?? 100)) || 100);
-    const types = String(req.query.types ?? '')
+    const after = Math.max(0, Number(qs(req.query.after)) || 0);
+    const limit = Math.min(500, Math.max(1, Number(qs(req.query.limit) ?? 100)) || 100);
+    const types = String(qs(req.query.types) ?? '')
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean);
-    const projects = String(req.query.projects ?? '')
+    const projects = String(qs(req.query.projects) ?? '')
       .split(',')
       .map((s) => s.trim().toUpperCase())
       .filter(Boolean);
@@ -93,7 +95,7 @@ eventsRouter.get(
     const allowed = visibleProjects(actor);
     // 065 audit C1 — same BROWSE_PROJECTS scope the polling endpoint applies.
     const scope = await visibleProjectScope(actor);
-    const lastEventId = req.headers['last-event-id'] ?? req.query.after;
+    const lastEventId = req.headers['last-event-id'] ?? qs(req.query.after);
     const resumeFrom = Number(lastEventId ?? 0) || 0;
 
     // Backfill missed events on resume before going live. A fresh connect
@@ -136,7 +138,7 @@ eventsRouter.get(
 eventsRouter.get(
   '/events/:id',
   ah(async (req: Request, res: Response) => {
-    const ev = await prisma.domainEvent.findUnique({ where: { id: BigInt(req.params.id) } }).catch(() => null);
+    const ev = await prisma.domainEvent.findUnique({ where: { id: BigInt(ps(req.params.id)) } }).catch(() => null);
     if (!ev) {
       res.status(404).json(jiraError(['Event not found.']));
       return;

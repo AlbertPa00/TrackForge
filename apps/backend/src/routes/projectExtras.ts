@@ -1,3 +1,4 @@
+import { ps } from '../lib/validation.js';
 // 058 US7 — project landing-page extras (internal product API).
 import { Router, type Router as RouterType } from 'express';
 import { prisma } from '../prisma.js';
@@ -16,7 +17,7 @@ export const projectExtrasRouter: RouterType = Router();
 projectExtrasRouter.get(
   '/projects/:key/summary',
   ah(async (req, res) => {
-    const key = req.params.key.toUpperCase();
+    const key = ps(req.params.key).toUpperCase();
     if (!projectAllowed(req.actor as Actor, key)) {
       throw new JiraApiError(404, jiraError(['Project does not exist or you do not have permission to see it.']));
     }

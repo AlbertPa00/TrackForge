@@ -1,3 +1,4 @@
+import { ps } from '../lib/validation.js';
 // Sprint 049 — OAuth 2.1 authorization server endpoints (Track B).
 // Public AS surface (mounted outside requireAuth): /.well-known/*, /oauth/*.
 // Authed surface: /api/internal/admin/oauth/clients (requireAdmin), /api/internal/me/grants.
@@ -563,7 +564,7 @@ oauthAdminRouter.put(
     }
     const d = parsed.data;
     const client = await prisma.oAuthClient.update({
-      where: { id: req.params.id },
+      where: { id: ps(req.params.id) },
       data: {
         ...(d.name !== undefined && { name: d.name }),
         ...(d.redirectUris !== undefined && { redirectUris: d.redirectUris }),
@@ -584,7 +585,7 @@ oauthAdminRouter.delete(
   requireAuth,
   requireAdmin,
   ah(async (req, res) => {
-    await prisma.oAuthClient.delete({ where: { id: req.params.id } });
+    await prisma.oAuthClient.delete({ where: { id: ps(req.params.id) } });
     res.status(204).end();
   })
 );
@@ -617,7 +618,7 @@ oauthMeRouter.delete(
   '/grants/:id',
   requireAuth,
   ah(async (req, res) => {
-    if (!(await revokeGrant(req.params.id, req.actor!.user.id))) {
+    if (!(await revokeGrant(ps(req.params.id), req.actor!.user.id))) {
       res.status(404).json(jiraError(['Grant not found']));
       return;
     }

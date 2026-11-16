@@ -1,3 +1,4 @@
+import { ps } from '../lib/validation.js';
 import { Router, type Router as RouterType } from 'express';
 import crypto from 'crypto';
 import {
@@ -56,7 +57,7 @@ import {
 import { prisma } from '../prisma.js';
 import type { Actor } from '../lib/auth.js';
 import { audit } from '../services/auditService.js';
-import {
+import { qs,
   createIssueSchema,
   compositeUpdateIssueSchema,
   transitionIssueSchema,
@@ -394,7 +395,7 @@ async function createMetaVisible(actor: Actor, projectKey: string): Promise<bool
 router.get(
   '/createmeta/:projectKey/issuetypes',
   ah(async (req, res) => {
-    const projectKey = req.params.projectKey.toUpperCase();
+    const projectKey = ps(req.params.projectKey).toUpperCase();
     if (!(await createMetaVisible(req.actor!, projectKey))) {
       res.status(404).json(jiraError(['Project does not exist or you do not have permission to see it.']));
       return;
@@ -406,12 +407,12 @@ router.get(
 router.get(
   '/createmeta/:projectKey/issuetypes/:issueTypeId',
   ah(async (req, res) => {
-    const projectKey = req.params.projectKey.toUpperCase();
+    const projectKey = ps(req.params.projectKey).toUpperCase();
     if (!(await createMetaVisible(req.actor!, projectKey))) {
       res.status(404).json(jiraError(['Project does not exist or you do not have permission to see it.']));
       return;
     }
-    res.json(await getCreateMetaForProject(projectKey, req.params.issueTypeId));
+    res.json(await getCreateMetaForProject(projectKey, ps(req.params.issueTypeId)));
   })
 );
 
@@ -420,7 +421,7 @@ router.get(
   '/picker',
   ah(async (req, res) => {
     const { pickIssues } = await import('../services/boardService.js');
-    const query = String(req.query.query ?? '');
+    const query = String(qs(req.query.query) ?? '');
     const { maxResults } = pageParams(req, { cap: 50, default: 10 });
     res.json(await pickIssues(req.actor!, query, maxResults));
   })
@@ -429,7 +430,7 @@ router.get(
 router.get(
   '/:key/editmeta',
   ah(async (req, res) => {
-    const key = req.params.key.toUpperCase();
+    const key = ps(req.params.key).toUpperCase();
     await enforceIssueScope(key, req.actor!);
     const issue = await getIssueByKey(key);
     res.json(await getEditMeta(issue.project.key, issue.issueTypeId));
@@ -439,11 +440,11 @@ router.get(
 router.get(
   '/:key',
   ah(async (req, res) => {
-    const key = req.params.key.toUpperCase();
+    const key = ps(req.params.key).toUpperCase();
     await enforceIssueScope(key, req.actor!);
     const issue = await getIssueByKey(key);
-    const fields = parseSelection(req.query.fields);
-    const expand = parseSelection(req.query.expand);
+    const fields = parseSelection(qs(req.query.fields));
+    const expand = parseSelection(qs(req.query.expand));
     const visibleRelIds = await visibleIssueIds(req.actor!, relatedIssueIds([issue]));
     const response = (await toIssueResponseWithCf(issue, { fields, actorId: req.actor!.user.id, visibleRelIds })) as Record<
       string,
@@ -458,7 +459,7 @@ router.get(
 router.get(
   '/:key/children',
   ah(async (req, res) => {
-    const key = req.params.key.toUpperCase();
+    const key = ps(req.params.key).toUpperCase();
     await enforceIssueScope(key, req.actor!);
     const issue = await getIssueByKey(key);
     const children = await listChildren(issue.id, issue.projectId, req.actor);
@@ -470,7 +471,7 @@ router.get(
 router.get(
   '/:key/changelog',
   ah(async (req, res) => {
-    const key = req.params.key.toUpperCase();
+    const key = ps(req.params.key).toUpperCase();
     await enforceIssueScope(key, req.actor!);
     const issue = await getIssueByKey(key);
     const { startAt, maxResults } = pageParams(req, { cap: 100, default: 50 });
@@ -482,7 +483,7 @@ router.get(
 router.put(
   '/:key/assignee',
   ah(async (req, res) => {
-    const key = req.params.key.toUpperCase();
+    const key = ps(req.params.key).toUpperCase();
     await enforceIssueScope(key, req.actor!);
     const parsed = assigneeBodySchema.safeParse(req.body);
     if (!parsed.success) {
@@ -515,7 +516,7 @@ router.put(
 router.get(
   '/:key/transitions',
   ah(async (req, res) => {
-    const key = req.params.key.toUpperCase();
+    const key = ps(req.params.key).toUpperCase();
     await enforceIssueScope(key, req.actor!);
     const transitions = await getIssueTransitions(key, req.actor!);
     res.json({ expand: 'transitions', transitions });
@@ -525,7 +526,7 @@ router.get(
 router.post(
   '/:key/transitions',
   ah(async (req, res) => {
-    const key = req.params.key.toUpperCase();
+    const key = ps(req.params.key).toUpperCase();
     await enforceIssueScope(key, req.actor!);
     const parsed = transitionIssueSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -550,7 +551,7 @@ router.post(
 router.put(
   '/:key',
   ah(async (req, res) => {
-    const key = req.params.key.toUpperCase();
+    const key = ps(req.params.key).toUpperCase();
     await enforceIssueScope(key, req.actor!);
     const parsed = compositeUpdateIssueSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -647,11 +648,11 @@ router.put(
 router.get(
   '/:key/comment',
   ah(async (req, res) => {
-    const key = req.params.key.toUpperCase();
+    const key = ps(req.params.key).toUpperCase();
     await enforceIssueScope(key, req.actor!);
     const { startAt, maxResults } = pageParams(req, { cap: 100, default: 50 });
     // Jira orderBy: `created` | `+created` (asc) | `-created` (desc, default).
-    const rawOrder = String(req.query.orderBy ?? '');
+    const rawOrder = String(qs(req.query.orderBy) ?? '');
     const order = rawOrder === 'created' || rawOrder === '+created' ? 'asc' : 'desc';
     const page = await listComments(key, startAt, maxResults, req.actor!, order);
     res.json({ ...page, comments: page.comments.map(toCommentResponse) });
@@ -661,7 +662,7 @@ router.get(
 router.post(
   '/:key/comment',
   ah(async (req, res) => {
-    const key = req.params.key.toUpperCase();
+    const key = ps(req.params.key).toUpperCase();
     await enforceIssueScope(key, req.actor!);
     const parsed = commentSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -692,16 +693,16 @@ router.post(
 router.get(
   '/:key/comment/:id',
   ah(async (req, res) => {
-    const key = req.params.key.toUpperCase();
+    const key = ps(req.params.key).toUpperCase();
     await enforceIssueScope(key, req.actor!);
-    res.json(toCommentResponse(await getComment(key, req.params.id, req.actor!)));
+    res.json(toCommentResponse(await getComment(key, ps(req.params.id), req.actor!)));
   })
 );
 
 router.put(
   '/:key/comment/:id',
   ah(async (req, res) => {
-    const key = req.params.key.toUpperCase();
+    const key = ps(req.params.key).toUpperCase();
     await enforceIssueScope(key, req.actor!);
     const parsed = commentSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -709,7 +710,7 @@ router.put(
       return;
     }
     res.json(
-      toCommentResponse(await editComment(key, req.params.id, parsed.data.body, req.actor!, parsed.data.visibility))
+      toCommentResponse(await editComment(key, ps(req.params.id), parsed.data.body, req.actor!, parsed.data.visibility))
     );
   })
 );
@@ -717,9 +718,9 @@ router.put(
 router.delete(
   '/:key/comment/:id',
   ah(async (req, res) => {
-    const key = req.params.key.toUpperCase();
+    const key = ps(req.params.key).toUpperCase();
     await enforceIssueScope(key, req.actor!);
-    await deleteComment(key, req.params.id, req.actor!);
+    await deleteComment(key, ps(req.params.id), req.actor!);
     res.status(204).send();
   })
 );
@@ -752,7 +753,7 @@ async function resolveWatchTarget(reqBody: unknown, key: string, actor: Actor) {
 router.get(
   '/:key/watchers',
   ah(async (req, res) => {
-    const key = req.params.key.toUpperCase();
+    const key = ps(req.params.key).toUpperCase();
     await enforceIssueScope(key, req.actor!);
     const issue = await getIssueByKey(key);
     const state = await watchState(issue.id, req.actor!.user.id);
@@ -778,7 +779,7 @@ router.get(
 router.post(
   '/:key/watchers',
   ah(async (req, res) => {
-    const key = req.params.key.toUpperCase();
+    const key = ps(req.params.key).toUpperCase();
     await enforceIssueScope(key, req.actor!);
     const { issue, target } = await resolveWatchTarget(req.body, key, req.actor!);
     if (isDryRun(req)) {
@@ -798,9 +799,9 @@ router.post(
 router.delete(
   '/:key/watchers',
   ah(async (req, res) => {
-    const key = req.params.key.toUpperCase();
+    const key = ps(req.params.key).toUpperCase();
     await enforceIssueScope(key, req.actor!);
-    const ref = String(req.query.username ?? req.query.accountId ?? req.actor!.user.id);
+    const ref = String(qs(req.query.username) ?? qs(req.query.accountId) ?? req.actor!.user.id);
     const { issue, target } = await resolveWatchTarget(ref === req.actor!.user.id ? undefined : ref, key, req.actor!);
     await removeWatcher(issue.id, target.id);
     res.status(204).send();
@@ -812,7 +813,7 @@ router.delete(
 router.get(
   '/:key/votes',
   ah(async (req, res) => {
-    const key = req.params.key.toUpperCase();
+    const key = ps(req.params.key).toUpperCase();
     await enforceIssueScope(key, req.actor!);
     const issue = await getIssueByKey(key);
     const state = await voteState(issue.id, req.actor!.user.id);
@@ -836,7 +837,7 @@ router.get(
 router.post(
   '/:key/votes',
   ah(async (req, res) => {
-    const key = req.params.key.toUpperCase();
+    const key = ps(req.params.key).toUpperCase();
     await enforceIssueScope(key, req.actor!);
     const issue = await getIssueByKey(key);
     await addVote(issue.id, req.actor!.user.id, req.actor!, key);
@@ -847,7 +848,7 @@ router.post(
 router.delete(
   '/:key/votes',
   ah(async (req, res) => {
-    const key = req.params.key.toUpperCase();
+    const key = ps(req.params.key).toUpperCase();
     await enforceIssueScope(key, req.actor!);
     const issue = await getIssueByKey(key);
     await removeVote(issue.id, req.actor!.user.id, req.actor!, key);
@@ -860,7 +861,7 @@ router.delete(
 router.get(
   '/:key/remotelink',
   ah(async (req, res) => {
-    const key = req.params.key.toUpperCase();
+    const key = ps(req.params.key).toUpperCase();
     await enforceIssueScope(key, req.actor!);
     const issue = await getIssueByKey(key);
     res.json(await listRemoteLinks(issue.id, key));
@@ -870,7 +871,7 @@ router.get(
 router.post(
   '/:key/remotelink',
   ah(async (req, res) => {
-    const key = req.params.key.toUpperCase();
+    const key = ps(req.params.key).toUpperCase();
     await enforceIssueScope(key, req.actor!);
     const issue = await getIssueByKey(key);
     const body = (req.body ?? {}) as {
@@ -906,10 +907,10 @@ router.post(
 router.delete(
   '/:key/remotelink/:linkId',
   ah(async (req, res) => {
-    const key = req.params.key.toUpperCase();
+    const key = ps(req.params.key).toUpperCase();
     await enforceIssueScope(key, req.actor!);
     const issue = await getIssueByKey(key);
-    await deleteRemoteLink(issue.id, req.params.linkId, req.actor!, key);
+    await deleteRemoteLink(issue.id, ps(req.params.linkId), req.actor!, key);
     res.status(204).send();
   })
 );
@@ -928,7 +929,7 @@ function adjustOpts(req: { query: unknown }) {
 router.get(
   '/:key/worklog',
   ah(async (req, res) => {
-    const key = req.params.key.toUpperCase();
+    const key = ps(req.params.key).toUpperCase();
     await enforceIssueScope(key, req.actor!);
     const issue = await getIssueByKey(key);
     const q = req.query as Record<string, unknown>;
@@ -952,7 +953,7 @@ router.get(
 router.post(
   '/:key/worklog',
   ah(async (req, res) => {
-    const key = req.params.key.toUpperCase();
+    const key = ps(req.params.key).toUpperCase();
     await enforceIssueScope(key, req.actor!);
     const parsed = worklogSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -991,11 +992,11 @@ router.post(
 router.get(
   '/:key/worklog/:id',
   ah(async (req, res) => {
-    const key = req.params.key.toUpperCase();
+    const key = ps(req.params.key).toUpperCase();
     await enforceIssueScope(key, req.actor!);
     const issue = await getIssueByKey(key);
     const page = await listWorklogs(issue, key, {}, undefined, req.actor!);
-    const w = page.worklogs.find((x) => x.id === req.params.id);
+    const w = page.worklogs.find((x) => x.id === ps(req.params.id));
     if (!w) {
       res.status(404).json(jiraError(['The worklog does not exist or you do not have permission to see it.']));
       return;
@@ -1007,7 +1008,7 @@ router.get(
 router.put(
   '/:key/worklog/:id',
   ah(async (req, res) => {
-    const key = req.params.key.toUpperCase();
+    const key = ps(req.params.key).toUpperCase();
     await enforceIssueScope(key, req.actor!);
     const parsed = updateWorklogSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -1015,7 +1016,7 @@ router.put(
       return;
     }
     const issue = await getIssueByKey(key);
-    const { worklog, cfg } = await updateWorklog(issue, key, req.params.id, parsed.data, adjustOpts(req), req.actor!);
+    const { worklog, cfg } = await updateWorklog(issue, key, ps(req.params.id), parsed.data, adjustOpts(req), req.actor!);
     await audit(req, 'worklog.update', 'issue', key, { worklogId: worklog.id });
     res.json(toWorklogResponse(worklog, key, cfg));
   })
@@ -1024,11 +1025,11 @@ router.put(
 router.delete(
   '/:key/worklog/:id',
   ah(async (req, res) => {
-    const key = req.params.key.toUpperCase();
+    const key = ps(req.params.key).toUpperCase();
     await enforceIssueScope(key, req.actor!);
     const issue = await getIssueByKey(key);
-    await deleteWorklog(issue, key, req.params.id, adjustOpts(req), req.actor!);
-    await audit(req, 'worklog.delete', 'issue', key, { worklogId: req.params.id });
+    await deleteWorklog(issue, key, ps(req.params.id), adjustOpts(req), req.actor!);
+    await audit(req, 'worklog.delete', 'issue', key, { worklogId: ps(req.params.id) });
     res.status(204).send();
   })
 );
@@ -1038,9 +1039,9 @@ router.delete(
 router.delete(
   '/:key',
   ah(async (req, res) => {
-    const key = req.params.key.toUpperCase();
+    const key = ps(req.params.key).toUpperCase();
     await enforceIssueScope(key, req.actor!);
-    const deleteSubtasks = String(req.query.deleteSubtasks ?? '') === 'true';
+    const deleteSubtasks = String(qs(req.query.deleteSubtasks) ?? '') === 'true';
 
     if (isDryRun(req)) {
       markDryRun(res);
@@ -1051,7 +1052,7 @@ router.delete(
     const result = await deleteIssue(
       key,
       deleteSubtasks,
-      String(req.query.confirmToken ?? req.headers['x-confirm-token'] ?? '') || undefined,
+      String(qs(req.query.confirmToken) ?? req.headers['x-confirm-token'] ?? '') || undefined,
       req.actor!
     );
     await audit(req, 'issue.delete', 'issue', key, result);
@@ -1064,7 +1065,7 @@ router.delete(
 router.put(
   '/:key/archive',
   ah(async (req, res) => {
-    const key = req.params.key.toUpperCase();
+    const key = ps(req.params.key).toUpperCase();
     // Not yet archived → enforceIssueScope resolves it and applies BROWSE +
     // token allow-list. ARCHIVE_ISSUES is checked inside archiveIssue.
     await enforceIssueScope(key, req.actor!);
@@ -1082,7 +1083,7 @@ router.put(
 router.put(
   '/:key/restore',
   ah(async (req, res) => {
-    const key = req.params.key.toUpperCase();
+    const key = ps(req.params.key).toUpperCase();
     // Archived issues are existence-hidden by canSeeIssue, so restore bypasses
     // enforceIssueScope deliberately — the token allow-list still applies, and
     // RESTORE_ISSUES is checked inside restoreIssue.

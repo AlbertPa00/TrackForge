@@ -1,3 +1,4 @@
+import { ps } from '../lib/validation.js';
 // 034 — automation rule management. Authoring (create): site admins any scope;
 // ADMINISTER_PROJECTS for project-scoped rules; others 403 (canAuthor).
 // Managing an existing rule (read/update/toggle/run): site admin, the rule's
@@ -116,7 +117,7 @@ automationRouter.get(
   ah(async (req, res) => {
     // 065 audit C5 — same visibility as the list: author, project admin of the
     // rule's project, or site admin. 404 hides existence (and its config).
-    const r = await loadRuleManaged(req.actor!, req.params.id, { include: INCLUDE });
+    const r = await loadRuleManaged(req.actor!, ps(req.params.id), { include: INCLUDE });
     res.json(toRuleResponse(r));
   })
 );
@@ -124,7 +125,7 @@ automationRouter.get(
 automationRouter.put(
   '/rules/:id',
   ah(async (req, res) => {
-    const existing = await loadRuleForWrite(req.actor!, req.params.id);
+    const existing = await loadRuleForWrite(req.actor!, ps(req.params.id));
     const body = parseBody(ruleInput.partial(), req);
     const merged = { ...existing, ...body };
     if (body.actions) merged.actions = unmaskSecrets(body.actions, existing.actions) as typeof merged.actions;
@@ -175,7 +176,7 @@ automationRouter.put(
 automationRouter.delete(
   '/rules/:id',
   ah(async (req, res) => {
-    const existing = await loadRuleForWrite(req.actor!, req.params.id);
+    const existing = await loadRuleForWrite(req.actor!, ps(req.params.id));
     await prisma.automationRule.delete({ where: { id: existing.id } });
     res.status(204).end();
   })
@@ -184,9 +185,9 @@ automationRouter.delete(
 automationRouter.post(
   '/rules/:id/toggle',
   ah(async (req, res) => {
-    await loadRuleForWrite(req.actor!, req.params.id);
+    await loadRuleForWrite(req.actor!, ps(req.params.id));
     const { enabled } = parseBody(z.object({ enabled: z.boolean().default(true) }), req);
-    const r = await prisma.automationRule.update({ where: { id: req.params.id }, data: { enabled }, include: INCLUDE });
+    const r = await prisma.automationRule.update({ where: { id: ps(req.params.id) }, data: { enabled }, include: INCLUDE });
     res.json(toRuleResponse(r));
   })
 );
@@ -194,9 +195,9 @@ automationRouter.post(
 automationRouter.get(
   '/rules/:id/runs',
   ah(async (req, res) => {
-    await loadRuleManaged(req.actor!, req.params.id);
+    await loadRuleManaged(req.actor!, ps(req.params.id));
     const runs = await prisma.automationRun.findMany({
-      where: { ruleId: req.params.id },
+      where: { ruleId: ps(req.params.id) },
       orderBy: { startedAt: 'desc' },
       take: pageParams(req, { cap: 200 }).maxResults,
     });
@@ -207,7 +208,7 @@ automationRouter.get(
 automationRouter.get(
   '/runs/:runId',
   ah(async (req, res) => {
-    const run = await prisma.automationRun.findUnique({ where: { id: req.params.runId } });
+    const run = await prisma.automationRun.findUnique({ where: { id: ps(req.params.runId) } });
     if (!run) throw new JiraApiError(404, jiraError(['Run not found']));
     await loadRuleManaged(req.actor!, run.ruleId, { message: 'Run not found' });
     res.json(toRunResponse(run));
@@ -230,7 +231,7 @@ async function assertRunnableIssue(actor: Actor, rule: { projectId: string | nul
 automationRouter.post(
   '/rules/:id/run',
   ah(async (req, res) => {
-    const r = await loadRuleManaged(req.actor!, req.params.id);
+    const r = await loadRuleManaged(req.actor!, ps(req.params.id));
     const issueKey = req.body?.issueKey ? String(req.body.issueKey) : null;
     if (issueKey) await assertRunnableIssue(req.actor!, r, issueKey);
     res.status(202).json(toRunResponse(await executeRule(r, { issueKey })));
@@ -240,7 +241,7 @@ automationRouter.post(
 automationRouter.post(
   '/rules/:id/dry-run',
   ah(async (req, res) => {
-    const r = await loadRuleManaged(req.actor!, req.params.id);
+    const r = await loadRuleManaged(req.actor!, ps(req.params.id));
     // dry-run against a key or a JQL selection (first N matches)
     const issueKey = req.body?.issueKey ? String(req.body.issueKey) : null;
     const jql = req.body?.jql ? String(req.body.jql) : null;

@@ -1,8 +1,10 @@
+import { ps } from '../lib/validation.js';
 import { Router, type Router as RouterType, type Request, type Response } from 'express';
 import { prisma } from '../prisma.js';
 import { getDurableRunner } from '../lib/jobs.js';
 import { ah, isDryRun } from '../lib/http.js';
 import { requireAdmin } from '../middleware/auth.js';
+import { qs } from '../lib/validation.js';
 
 /** Sprint 016 US2 — ops surface. Registered directly on the app before auth so
  *  probes never need credentials (and enumerate as clean paths, not router mounts). */
@@ -89,7 +91,7 @@ adminJobsRouter.get(
   '/jobs',
   requireAdmin,
   ah(async (req, res) => {
-    const state = typeof req.query.state === 'string' ? req.query.state : undefined;
+    const state = typeof qs(req.query.state) === 'string' ? qs(req.query.state) : undefined;
     res.json({ jobs: await getDurableRunner().list(state) });
   })
 );
@@ -97,7 +99,7 @@ adminJobsRouter.get(
   '/jobs/:id',
   requireAdmin,
   ah(async (req, res) => {
-    const j = await getDurableRunner().get(req.params.id);
+    const j = await getDurableRunner().get(ps(req.params.id));
     if (!j) {
       res.status(404).json({ errorMessages: ['Job not found.'], errors: {} });
       return;
@@ -109,7 +111,7 @@ adminJobsRouter.post(
   '/jobs/:id/retry',
   requireAdmin,
   ah(async (req, res) => {
-    const j = await getDurableRunner().get(req.params.id);
+    const j = await getDurableRunner().get(ps(req.params.id));
     if (!j) {
       res.status(404).json({ errorMessages: ['Job not found.'], errors: {} });
       return;
@@ -205,7 +207,7 @@ adminJobsRouter.post(
   ah(async (req, res) => {
     const { verifyBackup } = await import('../services/backupService.js');
     try {
-      res.json(await verifyBackup(req.params.id));
+      res.json(await verifyBackup(ps(req.params.id)));
     } catch (e) {
       res.status(404).json({ errorMessages: [`Backup not found: ${(e as Error).message}`], errors: {} });
     }
@@ -224,7 +226,7 @@ adminJobsRouter.post(
       res.status(404).json({ errorMessages: ['UI restore is disabled (TF_DISABLE_UI_RESTORE).'], errors: {} });
       return;
     }
-    const id = req.params.id;
+    const id = ps(req.params.id);
     const manifest = (await svc.listBackups()).find((b) => b.id === id);
     if (!manifest) {
       res.status(404).json({ errorMessages: ['Backup not found.'], errors: {} });
@@ -245,7 +247,7 @@ adminJobsRouter.post(
       });
       return;
     }
-    if (!(await svc.consumeRestoreToken(id, String(req.query.confirmToken ?? '') || undefined))) {
+    if (!(await svc.consumeRestoreToken(id, String(qs(req.query.confirmToken) ?? '') || undefined))) {
       res.status(400).json({
         errorMessages: [],
         errors: { confirmToken: 'Restore requires a confirmToken from a ?dryRun=true preview of this same backup.' },

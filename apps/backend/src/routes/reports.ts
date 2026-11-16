@@ -1,3 +1,4 @@
+import { ps } from '../lib/validation.js';
 import { Router, type Router as RouterType } from 'express';
 import type { Response } from 'express';
 import {
@@ -22,6 +23,7 @@ import {
 } from '../services/reportService.js';
 import { jiraError } from '../lib/errors.js';
 import { ah, sendCsv } from '../lib/http.js';
+import { qs } from '../lib/validation.js';
 
 export const reportsRouter: RouterType = Router();
 
@@ -145,7 +147,7 @@ reportsRouter.get('/', (_req, res) => {
 reportsRouter.get(
   '/board/:boardId/velocity',
   ah(async (req, res) => {
-    sendReport(res, await getVelocity(req.actor!, req.params.boardId), String(req.query.format ?? ''), 'velocity');
+    sendReport(res, await getVelocity(req.actor!, ps(req.params.boardId)), String(qs(req.query.format) ?? ''), 'velocity');
   })
 );
 
@@ -154,8 +156,8 @@ reportsRouter.get(
   ah(async (req, res) => {
     sendReport(
       res,
-      await getBurndown(req.actor!, req.params.boardId, req.query.sprintId as string | undefined),
-      String(req.query.format ?? ''),
+      await getBurndown(req.actor!, ps(req.params.boardId), qs(req.query.sprintId) as string | undefined),
+      String(qs(req.query.format) ?? ''),
       'burndown'
     );
   })
@@ -166,8 +168,8 @@ reportsRouter.get(
   ah(async (req, res) => {
     sendReport(
       res,
-      await getSprintReport(req.actor!, req.params.boardId, req.params.sprintId),
-      String(req.query.format ?? ''),
+      await getSprintReport(req.actor!, ps(req.params.boardId), ps(req.params.sprintId)),
+      String(qs(req.query.format) ?? ''),
       'sprint-report'
     );
   })
@@ -178,7 +180,7 @@ reportsRouter.get(
 reportsRouter.get(
   '/epic/:epicKey',
   ah(async (req, res) => {
-    sendReport(res, await getEpicReport(req.actor!, req.params.epicKey), String(req.query.format ?? ''), 'epic-report');
+    sendReport(res, await getEpicReport(req.actor!, ps(req.params.epicKey)), String(qs(req.query.format) ?? ''), 'epic-report');
   })
 );
 
@@ -187,8 +189,8 @@ reportsRouter.get(
   ah(async (req, res) => {
     sendReport(
       res,
-      await getCfd(req.actor!, req.params.boardId, Number(req.query.days) || 30),
-      String(req.query.format ?? ''),
+      await getCfd(req.actor!, ps(req.params.boardId), Number(qs(req.query.days)) || 30),
+      String(qs(req.query.format) ?? ''),
       'cfd'
     );
   })
@@ -201,11 +203,11 @@ reportsRouter.get(
       res,
       await getControlChart(
         req.actor!,
-        req.params.boardId,
-        Number(req.query.days) || 30,
-        Number(req.query.window) || 7
+        ps(req.params.boardId),
+        Number(qs(req.query.days)) || 30,
+        Number(qs(req.query.window)) || 7
       ),
-      String(req.query.format ?? ''),
+      String(qs(req.query.format) ?? ''),
       'control-chart'
     );
   })
@@ -218,8 +220,8 @@ reportsRouter.get(
   ah(async (req, res) => {
     sendReport(
       res,
-      await getPie(req.actor!, String(req.query.jql ?? ''), String(req.query.statType ?? 'status')),
-      String(req.query.format ?? ''),
+      await getPie(req.actor!, String(qs(req.query.jql) ?? ''), String(qs(req.query.statType) ?? 'status')),
+      String(qs(req.query.format) ?? ''),
       'pie'
     );
   })
@@ -232,11 +234,11 @@ reportsRouter.get(
       res,
       await getTwoDimensional(
         req.actor!,
-        String(req.query.jql ?? ''),
-        String(req.query.xstatType ?? 'status'),
-        String(req.query.ystatType ?? 'assignee')
+        String(qs(req.query.jql) ?? ''),
+        String(qs(req.query.xstatType) ?? 'status'),
+        String(qs(req.query.ystatType) ?? 'assignee')
       ),
-      String(req.query.format ?? ''),
+      String(qs(req.query.format) ?? ''),
       'two-dimensional'
     );
   })
@@ -249,11 +251,11 @@ reportsRouter.get(
       res,
       await getCreatedVsResolved(
         req.actor!,
-        String(req.query.jql ?? ''),
-        Number(req.query.days) || 30,
-        req.query.cumulative === 'true'
+        String(qs(req.query.jql) ?? ''),
+        Number(qs(req.query.days)) || 30,
+        qs(req.query.cumulative) === 'true'
       ),
-      String(req.query.format ?? ''),
+      String(qs(req.query.format) ?? ''),
       'created-vs-resolved'
     );
   })
@@ -264,8 +266,8 @@ reportsRouter.get(
   ah(async (req, res) => {
     sendReport(
       res,
-      await getWorkload(req.actor!, req.query.projectKey ? String(req.query.projectKey) : undefined),
-      String(req.query.format ?? ''),
+      await getWorkload(req.actor!, qs(req.query.projectKey) ? String(qs(req.query.projectKey)) : undefined),
+      String(qs(req.query.format) ?? ''),
       'workload'
     );
   })
@@ -276,8 +278,8 @@ reportsRouter.get(
   ah(async (req, res) => {
     sendReport(
       res,
-      await getAverageAge(req.actor!, req.query.jql ? String(req.query.jql) : undefined, Number(req.query.weeks) || 8),
-      String(req.query.format ?? ''),
+      await getAverageAge(req.actor!, qs(req.query.jql) ? String(qs(req.query.jql)) : undefined, Number(qs(req.query.weeks)) || 8),
+      String(qs(req.query.format) ?? ''),
       'average-age'
     );
   })
@@ -290,10 +292,10 @@ reportsRouter.get(
       res,
       await getResolutionTime(
         req.actor!,
-        req.query.jql ? String(req.query.jql) : undefined,
-        String(req.query.groupBy ?? 'priority')
+        qs(req.query.jql) ? String(qs(req.query.jql)) : undefined,
+        String(qs(req.query.groupBy) ?? 'priority')
       ),
-      String(req.query.format ?? ''),
+      String(qs(req.query.format) ?? ''),
       'resolution-time'
     );
   })
@@ -305,11 +307,11 @@ reportsRouter.get(
     sendReport(
       res,
       await getTimeTracking(req.actor!, {
-        versionId: req.query.versionId ? String(req.query.versionId) : undefined,
-        sprintId: req.query.sprintId ? String(req.query.sprintId) : undefined,
-        projectKey: req.query.projectKey ? String(req.query.projectKey) : undefined,
+        versionId: qs(req.query.versionId) ? String(qs(req.query.versionId)) : undefined,
+        sprintId: qs(req.query.sprintId) ? String(qs(req.query.sprintId)) : undefined,
+        projectKey: qs(req.query.projectKey) ? String(qs(req.query.projectKey)) : undefined,
       }),
-      String(req.query.format ?? ''),
+      String(qs(req.query.format) ?? ''),
       'time-tracking'
     );
   })
@@ -321,12 +323,12 @@ reportsRouter.get(
     sendReport(
       res,
       await getTimesheet(req.actor!, {
-        userId: req.query.userId ? String(req.query.userId) : null,
-        projectKey: req.query.projectKey ? String(req.query.projectKey) : undefined,
-        from: req.query.from ? String(req.query.from) : undefined,
-        to: req.query.to ? String(req.query.to) : undefined,
+        userId: qs(req.query.userId) ? String(qs(req.query.userId)) : null,
+        projectKey: qs(req.query.projectKey) ? String(qs(req.query.projectKey)) : undefined,
+        from: qs(req.query.from) ? String(qs(req.query.from)) : undefined,
+        to: qs(req.query.to) ? String(qs(req.query.to)) : undefined,
       }),
-      String(req.query.format ?? ''),
+      String(qs(req.query.format) ?? ''),
       'timesheet'
     );
   })
@@ -337,8 +339,8 @@ reportsRouter.get(
   ah(async (req, res) => {
     sendReport(
       res,
-      await getVersionReport(req.actor!, req.params.id),
-      String(req.query.format ?? ''),
+      await getVersionReport(req.actor!, ps(req.params.id)),
+      String(qs(req.query.format) ?? ''),
       'version-report'
     );
   })
@@ -349,8 +351,8 @@ reportsRouter.get(
   ah(async (req, res) => {
     sendReport(
       res,
-      await getProjectSummary(req.params.key, req.actor!),
-      String(req.query.format ?? ''),
+      await getProjectSummary(ps(req.params.key), req.actor!),
+      String(qs(req.query.format) ?? ''),
       'project-summary'
     );
   })
@@ -364,6 +366,6 @@ reportsRouter.get(
       res.status(403).json(jiraError(['Administrator access required.']));
       return;
     }
-    sendReport(res, await getOrgMetrics(req.actor!), String(req.query.format ?? ''), 'org-metrics');
+    sendReport(res, await getOrgMetrics(req.actor!), String(qs(req.query.format) ?? ''), 'org-metrics');
   })
 );

@@ -1,3 +1,5 @@
+import { ps } from '../lib/validation.js';
+import { qs } from '../lib/validation.js';
 import { Router, type Router as RouterType } from 'express';
 import { prisma } from '../prisma.js';
 import { audit } from '../services/auditService.js';
@@ -46,7 +48,7 @@ permissionRouter.get(
   '/groups/picker',
   requireAdmin,
   ah(async (req, res) => {
-    const query = String(req.query.query ?? '').toLowerCase();
+    const query = String(qs(req.query.query) ?? '').toLowerCase();
     const { startAt, maxResults } = pageParams(req, { cap: 1000, default: 100 });
     const where = query ? { name: { contains: query, mode: 'insensitive' as const } } : {};
     const [total, groups] = await prisma.$transaction([
@@ -67,7 +69,7 @@ permissionRouter.get(
   '/group',
   requireAdmin,
   ah(async (req, res) => {
-    const name = String(req.query.groupname ?? '');
+    const name = String(qs(req.query.groupname) ?? '');
     const g = await prisma.group.findUnique({ where: { name }, include: { _count: { select: { members: true } } } });
     if (!g) throw notFound(`Group '${name}' not found.`);
     res.json({
@@ -86,7 +88,7 @@ permissionRouter.put(
   '/group',
   requireAdmin,
   ah(async (req, res) => {
-    const name = String(req.query.groupname ?? req.body?.groupname ?? '');
+    const name = String(qs(req.query.groupname) ?? req.body?.groupname ?? '');
     if (!name) throw badReq('groupname is required.');
     const requireTotp = (req.body as { requireTotp?: unknown } | undefined)?.requireTotp;
     if (typeof requireTotp !== 'boolean') throw badReq('requireTotp (boolean) is required.');
@@ -101,7 +103,7 @@ permissionRouter.delete(
   '/group',
   requireAdmin,
   ah(async (req, res) => {
-    const name = String(req.query.groupname ?? '');
+    const name = String(qs(req.query.groupname) ?? '');
     const g = await prisma.group.findUnique({
       where: { name },
       include: {
@@ -138,12 +140,12 @@ permissionRouter.get(
   '/group/member',
   requireAdmin,
   ah(async (req, res) => {
-    const name = String(req.query.groupname ?? '');
+    const name = String(qs(req.query.groupname) ?? '');
     const g = await prisma.group.findUnique({ where: { name } });
     if (!g) throw notFound(`Group '${name}' not found.`);
     const { startAt, maxResults } = pageParams(req, { cap: 100, default: 50 });
     // TF extension: ?query= filters members server-side (Jira ignores extras).
-    const query = String(req.query.query ?? '').trim();
+    const query = String(qs(req.query.query) ?? '').trim();
     const memberWhere = {
       groupId: g.id,
       ...(query
@@ -182,7 +184,7 @@ permissionRouter.post(
   '/group/user',
   requireAdmin,
   ah(async (req, res) => {
-    const name = String(req.query.groupname ?? req.body?.groupname ?? '');
+    const name = String(qs(req.query.groupname) ?? req.body?.groupname ?? '');
     const g = await prisma.group.findUnique({ where: { name } });
     if (!g) throw notFound(`Group '${name}' not found.`);
     const ref = String(req.body?.accountId ?? req.body?.name ?? '');
@@ -201,10 +203,10 @@ permissionRouter.delete(
   '/group/user',
   requireAdmin,
   ah(async (req, res) => {
-    const name = String(req.query.groupname ?? '');
+    const name = String(qs(req.query.groupname) ?? '');
     const g = await prisma.group.findUnique({ where: { name } });
     if (!g) throw notFound(`Group '${name}' not found.`);
-    const ref = String(req.query.accountId ?? req.query.username ?? '');
+    const ref = String(qs(req.query.accountId) ?? qs(req.query.username) ?? '');
     const user = await userByRefOr404(ref);
     await prisma.groupMember.deleteMany({ where: { groupId: g.id, userId: user.id } });
     await audit(req, 'group.member.remove', 'group', g.id, { name, userId: user.id });
@@ -241,7 +243,7 @@ permissionRouter.post(
 permissionRouter.get(
   '/role/:id',
   ah(async (req, res) => {
-    const r = await prisma.projectRole.findUnique({ where: { id: req.params.id } });
+    const r = await prisma.projectRole.findUnique({ where: { id: ps(req.params.id) } });
     if (!r) throw notFound('Role not found.');
     res.json(roleShape(r));
   })
@@ -252,7 +254,7 @@ permissionRouter.put(
   requireAdmin,
   ah(async (req, res) => {
     const r = await prisma.projectRole.update({
-      where: { id: req.params.id },
+      where: { id: ps(req.params.id) },
       data: { name: req.body?.name, description: req.body?.description },
     });
     await audit(req, 'role.update', 'projectRole', r.id, { name: r.name });
@@ -264,8 +266,8 @@ permissionRouter.delete(
   '/role/:id',
   requireAdmin,
   ah(async (req, res) => {
-    await prisma.projectRole.delete({ where: { id: req.params.id } });
-    await audit(req, 'role.delete', 'projectRole', req.params.id, {});
+    await prisma.projectRole.delete({ where: { id: ps(req.params.id) } });
+    await audit(req, 'role.delete', 'projectRole', ps(req.params.id), {});
     res.status(204).send();
   })
 );
@@ -284,7 +286,7 @@ async function projectByKey(key: string) {
 projectPermissionRouter.get(
   '/:key/role',
   ah(async (req, res) => {
-    const p = await projectByKey(req.params.key);
+    const p = await projectByKey(ps(req.params.key));
     if (!projectAllowed(req.actor!, p.key))
       throw notFound('Project does not exist or you do not have permission to see it.');
     await requireProjectAdmin(req, p.id);
@@ -298,20 +300,20 @@ projectPermissionRouter.get(
 projectPermissionRouter.get(
   '/:key/role/:id',
   ah(async (req, res) => {
-    const p = await projectByKey(req.params.key);
+    const p = await projectByKey(ps(req.params.key));
     if (!projectAllowed(req.actor!, p.key))
       throw notFound('Project does not exist or you do not have permission to see it.');
     await requireProjectAdmin(req, p.id);
-    res.json(await roleActorsResponse(p, req.params.id));
+    res.json(await roleActorsResponse(p, ps(req.params.id)));
   })
 );
 
 projectPermissionRouter.post(
   '/:key/role/:id',
   ah(async (req, res) => {
-    const p = await projectByKey(req.params.key);
+    const p = await projectByKey(ps(req.params.key));
     await requireProjectAdmin(req, p.id);
-    const role = await prisma.projectRole.findUnique({ where: { id: req.params.id } });
+    const role = await prisma.projectRole.findUnique({ where: { id: ps(req.params.id) } });
     if (!role) throw notFound('Role not found.');
     const { userIds, groupIds } = await resolveActorRefs(req.body ?? {});
     await prisma.projectRoleActor.createMany({
@@ -329,9 +331,9 @@ projectPermissionRouter.post(
 projectPermissionRouter.put(
   '/:key/role/:id',
   ah(async (req, res) => {
-    const p = await projectByKey(req.params.key);
+    const p = await projectByKey(ps(req.params.key));
     await requireProjectAdmin(req, p.id);
-    const role = await prisma.projectRole.findUnique({ where: { id: req.params.id } });
+    const role = await prisma.projectRole.findUnique({ where: { id: ps(req.params.id) } });
     if (!role) throw notFound('Role not found.');
     const { userIds, groupIds } = await resolveActorRefs(req.body ?? {});
     await prisma.$transaction(async (tx) => {
@@ -359,12 +361,12 @@ projectPermissionRouter.put(
 projectPermissionRouter.delete(
   '/:key/role/:id',
   ah(async (req, res) => {
-    const p = await projectByKey(req.params.key);
+    const p = await projectByKey(ps(req.params.key));
     await requireProjectAdmin(req, p.id);
-    const role = await prisma.projectRole.findUnique({ where: { id: req.params.id } });
+    const role = await prisma.projectRole.findUnique({ where: { id: ps(req.params.id) } });
     if (!role) throw notFound('Role not found.');
-    const userRef = req.query.user as string | undefined;
-    const groupRef = req.query.group as string | undefined;
+    const userRef = qs(req.query.user) as string | undefined;
+    const groupRef = qs(req.query.group) as string | undefined;
     if (!userRef && !groupRef) throw badReq('Provide ?user= or ?group=.');
     const user = userRef ? await resolveUserRef(userRef) : null;
     const group = groupRef ? await prisma.group.findUnique({ where: { name: groupRef } }) : null;
@@ -388,7 +390,7 @@ permissionRouter.get(
   '/permissionscheme',
   requireAdmin,
   ah(async (req, res) => {
-    const expand = String(req.query.expand ?? '');
+    const expand = String(qs(req.query.expand) ?? '');
     const schemes = await prisma.permissionScheme.findMany({
       orderBy: { name: 'asc' },
       include: expand.includes('permissions') ? { grants: true } : undefined,
@@ -415,7 +417,7 @@ permissionRouter.get(
   '/permissionscheme/:id',
   requireAdmin,
   ah(async (req, res) => {
-    const s = await prisma.permissionScheme.findUnique({ where: { id: req.params.id }, include: { grants: true } });
+    const s = await prisma.permissionScheme.findUnique({ where: { id: ps(req.params.id) }, include: { grants: true } });
     if (!s) throw notFound('Permission scheme not found.');
     res.json(schemeShape(s, s.grants));
   })
@@ -426,7 +428,7 @@ permissionRouter.put(
   requireAdmin,
   ah(async (req, res) => {
     const s = await prisma.permissionScheme.update({
-      where: { id: req.params.id },
+      where: { id: ps(req.params.id) },
       data: { name: req.body?.name, description: req.body?.description },
     });
     await audit(req, 'scheme.update', 'permissionScheme', s.id, { name: s.name });
@@ -439,7 +441,7 @@ permissionRouter.delete(
   requireAdmin,
   ah(async (req, res) => {
     const s = await prisma.permissionScheme.findUnique({
-      where: { id: req.params.id },
+      where: { id: ps(req.params.id) },
       include: { projects: { select: { key: true } }, _count: { select: { grants: true } } },
     });
     if (!s) throw notFound('Permission scheme not found.');
@@ -471,7 +473,7 @@ permissionRouter.get(
   '/permissionscheme/:id/permission',
   requireAdmin,
   ah(async (req, res) => {
-    const grants = await prisma.permissionGrant.findMany({ where: { schemeId: req.params.id } });
+    const grants = await prisma.permissionGrant.findMany({ where: { schemeId: ps(req.params.id) } });
     res.json({ permissions: grants.map(grantShape) });
   })
 );
@@ -480,7 +482,7 @@ permissionRouter.post(
   '/permissionscheme/:id/permission',
   requireAdmin,
   ah(async (req, res) => {
-    const s = await prisma.permissionScheme.findUnique({ where: { id: req.params.id } });
+    const s = await prisma.permissionScheme.findUnique({ where: { id: ps(req.params.id) } });
     if (!s) throw notFound('Permission scheme not found.');
     const permission = String(req.body?.permission ?? '').toUpperCase();
     const holder = req.body?.holder ?? {};
@@ -500,8 +502,8 @@ permissionRouter.delete(
   '/permissionscheme/:id/permission/:permissionId',
   requireAdmin,
   ah(async (req, res) => {
-    const g = await prisma.permissionGrant.findUnique({ where: { id: req.params.permissionId } });
-    if (!g || g.schemeId !== req.params.id) throw notFound('Grant not found.');
+    const g = await prisma.permissionGrant.findUnique({ where: { id: ps(req.params.permissionId) } });
+    if (!g || g.schemeId !== ps(req.params.id)) throw notFound('Grant not found.');
     await prisma.permissionGrant.delete({ where: { id: g.id } });
     await audit(req, 'scheme.grant.remove', 'permissionScheme', g.schemeId, { permission: g.permission });
     res.status(204).send();
@@ -515,7 +517,7 @@ permissionRouter.post(
   '/permissionscheme/:id/permission/preview',
   requireAdmin,
   ah(async (req, res) => {
-    const s = await prisma.permissionScheme.findUnique({ where: { id: req.params.id } });
+    const s = await prisma.permissionScheme.findUnique({ where: { id: ps(req.params.id) } });
     if (!s) throw notFound('Permission scheme not found.');
     const holderType = String(req.body?.holder?.type ?? '');
     const holderParam = req.body?.holder?.parameter != null ? String(req.body.holder.parameter) : null;
@@ -531,7 +533,7 @@ projectPermissionRouter.get(
   '/:key/permissionscheme',
   ah(async (req, res) => {
     const p = await prisma.project.findUnique({
-      where: { key: req.params.key.toUpperCase() },
+      where: { key: ps(req.params.key).toUpperCase() },
       include: { scheme: true },
     });
     if (!p) throw notFound('Project does not exist or you do not have permission to see it.');
@@ -545,7 +547,7 @@ projectPermissionRouter.get(
 projectPermissionRouter.put(
   '/:key/permissionscheme',
   ah(async (req, res) => {
-    const p = await projectByKeyOr404(req.params.key);
+    const p = await projectByKeyOr404(ps(req.params.key));
     await requireProjectAdmin(req, p.id);
     const schemeId = String(req.body?.id ?? '');
     const s = await prisma.permissionScheme.findUnique({ where: { id: schemeId } });
@@ -567,7 +569,7 @@ projectPermissionRouter.put(
 permissionRouter.get(
   '/mypermissions',
   ah(async (req, res) => {
-    const perms = String(req.query.permissions ?? '')
+    const perms = String(qs(req.query.permissions) ?? '')
       .split(',')
       .map((p) => p.trim())
       .filter(Boolean);
@@ -576,19 +578,19 @@ permissionRouter.get(
       projectId?: string;
       issue?: { projectId: string; reporterId?: string | null; assigneeId?: string | null };
     } = {};
-    if (req.query.issueKey) {
-      const key = String(req.query.issueKey).toUpperCase();
+    if (qs(req.query.issueKey)) {
+      const key = String(qs(req.query.issueKey)).toUpperCase();
       const num = Number(key.split('-')[1]);
       const issue = await prisma.issue.findFirst({
         where: { issueNumber: num, project: { key: key.split('-')[0] } },
         select: { id: true, projectId: true, reporterId: true, assigneeId: true },
       });
       if (issue) scope = { issue };
-    } else if (req.query.projectKey || req.query.projectId) {
+    } else if (qs(req.query.projectKey) || qs(req.query.projectId)) {
       const p = await prisma.project.findFirst({
-        where: req.query.projectKey
-          ? { key: String(req.query.projectKey).toUpperCase() }
-          : { id: String(req.query.projectId) },
+        where: qs(req.query.projectKey)
+          ? { key: String(qs(req.query.projectKey)).toUpperCase() }
+          : { id: String(qs(req.query.projectId)) },
         select: { id: true },
       });
       if (p) scope = { projectId: p.id };

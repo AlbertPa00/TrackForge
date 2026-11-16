@@ -1,6 +1,7 @@
+import { ps } from '../lib/validation.js';
 import { Router, type Router as RouterType } from 'express';
 import { jiraError } from '../lib/errors.js';
-import {
+import { qs,
   formatZodErrors,
   timeTrackingConfigSchema,
   moduleTogglesSchema,
@@ -96,12 +97,12 @@ systemRouter.put(
 
 /** GET /system/settings — raw setting read for admins (021 module toggles grow here). */
 systemRouter.get('/system/settings/:key', requireAdmin, async (req, res) => {
-  const value = await getSetting(req.params.key);
+  const value = await getSetting(ps(req.params.key));
   if (value === null) {
     res.status(404).json(jiraError(['Setting not found.']));
     return;
   }
-  res.json({ key: req.params.key, value });
+  res.json({ key: ps(req.params.key), value });
 });
 
 // ---- 060 stretch — announcement banner (Jira "Announcement banner") ----
@@ -183,7 +184,7 @@ systemRouter.get(
 systemRouter.get(
   '/projects/:key/issues/archived',
   ah(async (req, res) => {
-    const project = await prisma.project.findUnique({ where: { key: req.params.key.toUpperCase() } });
+    const project = await prisma.project.findUnique({ where: { key: ps(req.params.key).toUpperCase() } });
     if (!project || !projectAllowed(req.actor!, project.key)) {
       res.status(404).json(jiraError(['Project does not exist or you do not have permission to see it.']));
       return;
@@ -194,7 +195,7 @@ systemRouter.get(
       res.status(403).json(jiraError(['You do not have permission to restore issues in this project.']));
       return;
     }
-    res.json(await listArchivedIssues(project.id, String(req.query.query ?? '') || undefined));
+    res.json(await listArchivedIssues(project.id, String(qs(req.query.query) ?? '') || undefined));
   })
 );
 
@@ -238,12 +239,12 @@ systemRouter.put(
     }
     if (parsed.data.name) {
       const dup = await prisma.projectCategory.findUnique({ where: { name: parsed.data.name } });
-      if (dup && dup.id !== req.params.id) {
+      if (dup && dup.id !== ps(req.params.id)) {
         res.status(400).json(jiraError([], { name: 'A project category with that name already exists.' }));
         return;
       }
     }
-    const c = await prisma.projectCategory.update({ where: { id: req.params.id }, data: parsed.data });
+    const c = await prisma.projectCategory.update({ where: { id: ps(req.params.id) }, data: parsed.data });
     await audit(req, 'projectcategory.updated', 'projectcategory', c.id, parsed.data);
     res.json(catShape(c));
   })
@@ -253,13 +254,13 @@ systemRouter.delete(
   '/projectcategories/:id',
   requireAdmin,
   ah(async (req, res) => {
-    const count = await prisma.project.count({ where: { categoryId: req.params.id } });
+    const count = await prisma.project.count({ where: { categoryId: ps(req.params.id) } });
     if (count > 0) {
       res.status(400).json(jiraError([], { category: `Category is used by ${count} project(s).` }));
       return;
     }
-    await prisma.projectCategory.delete({ where: { id: req.params.id } });
-    await audit(req, 'projectcategory.deleted', 'projectcategory', req.params.id);
+    await prisma.projectCategory.delete({ where: { id: ps(req.params.id) } });
+    await audit(req, 'projectcategory.deleted', 'projectcategory', ps(req.params.id));
     res.status(204).end();
   })
 );

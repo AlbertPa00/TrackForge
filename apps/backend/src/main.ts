@@ -340,7 +340,9 @@ if (existsSync(frontendDist)) {
       },
     })
   );
-  app.get('*', (req, res, next) => {
+  // Express 5 / path-to-regexp v8: '*' is no longer valid — app.use + the
+  // method guard below keeps the SPA fallback semantics identical.
+  app.use((req, res, next) => {
     if (req.method !== 'GET' || req.path.startsWith('/rest') || req.path.startsWith('/api')) return next();
     res.setHeader('Cache-Control', 'no-cache');
     res.sendFile(join(frontendDist, 'index.html'));

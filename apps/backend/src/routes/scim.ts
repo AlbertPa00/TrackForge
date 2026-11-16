@@ -1,3 +1,4 @@
+import { ps } from '../lib/validation.js';
 // Sprint 049 Track A1 — SCIM 2.0 endpoints + directory connection admin.
 // /scim/v2/* sits OUTSIDE requireAuth — the per-connection bearer IS the auth
 // (resolveScimToken). /api/internal/admin/directory/* is requireAdmin.
@@ -149,7 +150,7 @@ scimRouter.get(
 );
 scimRouter.get(
   '/Users/:id',
-  handle((req) => getScimUser(req.params.id))
+  handle((req) => getScimUser(ps(req.params.id)))
 );
 scimRouter.post(
   '/Users',
@@ -158,22 +159,22 @@ scimRouter.post(
 scimRouter.put(
   '/Users/:id',
   handle(async (req) => {
-    const existing = await prisma.user.findUnique({ where: { id: req.params.id } });
+    const existing = await prisma.user.findUnique({ where: { id: ps(req.params.id) } });
     if (!existing) throw new ScimError(404, 'User not found');
     const body = { ...(req.body as Record<string, unknown>) };
-    const ident = await prisma.externalIdentity.findFirst({ where: { userId: req.params.id, provider: 'scim' } });
+    const ident = await prisma.externalIdentity.findFirst({ where: { userId: ps(req.params.id), provider: 'scim' } });
     if (ident && !body.externalId) body.externalId = ident.externalId;
     return upsertScimUser(req.scimConnection!, body);
   })
 );
 scimRouter.patch(
   '/Users/:id',
-  handle((req) => patchScimUser(req.scimConnection!, req.params.id, req.body))
+  handle((req) => patchScimUser(req.scimConnection!, ps(req.params.id), req.body))
 );
 scimRouter.delete(
   '/Users/:id',
   handle(async (req) => {
-    await deactivateScimUser(req.scimConnection!, req.params.id);
+    await deactivateScimUser(req.scimConnection!, ps(req.params.id));
     return { status: 204 };
   })
 );
@@ -186,7 +187,7 @@ scimRouter.get(
 );
 scimRouter.get(
   '/Groups/:id',
-  handle((req) => getScimGroup(req.params.id))
+  handle((req) => getScimGroup(ps(req.params.id)))
 );
 scimRouter.post(
   '/Groups',
@@ -194,7 +195,7 @@ scimRouter.post(
 );
 scimRouter.put(
   '/Groups/:id',
-  handle((req) => upsertScimGroup(req.scimConnection!, req.body, req.params.id))
+  handle((req) => upsertScimGroup(req.scimConnection!, req.body, ps(req.params.id)))
 );
 
 // ---------- admin: directory connections ----------
@@ -270,7 +271,7 @@ directoryAdminRouter.put(
       return;
     }
     const conn = await prisma.directoryConnection.update({
-      where: { id: req.params.id },
+      where: { id: ps(req.params.id) },
       data: {
         ...(d.name !== undefined && { name: d.name }),
         ...(d.config !== undefined && { config: d.config as object }),
@@ -285,7 +286,7 @@ directoryAdminRouter.put(
 directoryAdminRouter.delete(
   '/directory/:id',
   ah(async (req, res) => {
-    await prisma.directoryConnection.delete({ where: { id: req.params.id } });
+    await prisma.directoryConnection.delete({ where: { id: ps(req.params.id) } });
     res.status(204).end();
   })
 );
@@ -294,7 +295,7 @@ directoryAdminRouter.delete(
 directoryAdminRouter.post(
   '/directory/:id/scim-tokens',
   ah(async (req, res) => {
-    const conn = await prisma.directoryConnection.findUnique({ where: { id: req.params.id } });
+    const conn = await prisma.directoryConnection.findUnique({ where: { id: ps(req.params.id) } });
     if (!conn || conn.type !== 'scim') {
       res.status(404).json(jiraError(['SCIM connection not found']));
       return;
@@ -315,7 +316,7 @@ directoryAdminRouter.post(
 directoryAdminRouter.delete(
   '/directory/:id/scim-tokens/:tokenId',
   ah(async (req, res) => {
-    await prisma.scimToken.update({ where: { id: req.params.tokenId }, data: { revokedAt: new Date() } });
+    await prisma.scimToken.update({ where: { id: ps(req.params.tokenId) }, data: { revokedAt: new Date() } });
     res.status(204).end();
   })
 );
@@ -325,7 +326,7 @@ directoryAdminRouter.delete(
 directoryAdminRouter.post(
   '/directory/:id/test',
   ah(async (req, res) => {
-    const conn = await prisma.directoryConnection.findUnique({ where: { id: req.params.id } });
+    const conn = await prisma.directoryConnection.findUnique({ where: { id: ps(req.params.id) } });
     if (!conn || conn.type !== 'ldap') {
       res.status(404).json(jiraError(['LDAP connection not found']));
       return;
@@ -342,7 +343,7 @@ directoryAdminRouter.post(
 directoryAdminRouter.post(
   '/directory/:id/sync',
   ah(async (req, res) => {
-    const conn = await prisma.directoryConnection.findUnique({ where: { id: req.params.id } });
+    const conn = await prisma.directoryConnection.findUnique({ where: { id: ps(req.params.id) } });
     if (!conn || conn.type !== 'ldap' || !conn.enabled) {
       res.status(404).json(jiraError(['Enabled LDAP connection not found']));
       return;

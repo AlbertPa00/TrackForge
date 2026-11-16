@@ -1,3 +1,4 @@
+import { ps } from '../lib/validation.js';
 import { Router, type Router as RouterType } from 'express';
 import {
   createSprint,
@@ -9,7 +10,7 @@ import {
   moveIssuesToSprint,
   moveIssuesToBacklog,
 } from '../services/sprintService.js';
-import { createSprintSchema, updateSprintSchema, issueKeysSchema, formatZodErrors } from '../lib/validation.js';
+import { qs, createSprintSchema, updateSprintSchema, issueKeysSchema, formatZodErrors } from '../lib/validation.js';
 import { jiraError } from '../lib/errors.js';
 import { rankIssues, previewRankIssues, listBacklog } from '../services/boardService.js';
 import { getIssueByKey, toIssueResponse, parseSelection, expandIssueResponse } from '../services/issueService.js';
@@ -45,13 +46,13 @@ function keysAllowed(
 sprintRouter.get(
   '/issue/:key',
   ah(async (req, res) => {
-    await enforceIssueScope(req.params.key, req.actor!);
-    const issue = await getIssueByKey(req.params.key);
+    await enforceIssueScope(ps(req.params.key), req.actor!);
+    const issue = await getIssueByKey(ps(req.params.key));
     res.json(
       await expandIssueResponse(
         toIssueResponse(issue) as Record<string, unknown>,
         issue,
-        parseSelection(req.query.expand)
+        parseSelection(qs(req.query.expand))
       )
     );
   })
@@ -101,8 +102,8 @@ sprintRouter.post(
 sprintRouter.get(
   '/sprint/:id',
   ah(async (req, res) => {
-    await enforceSprintScope(req.params.id, req.actor!);
-    res.json(await getSprint(req.params.id));
+    await enforceSprintScope(ps(req.params.id), req.actor!);
+    res.json(await getSprint(ps(req.params.id)));
   })
 );
 
@@ -112,13 +113,13 @@ const updateSprintHandler = async (
   next: import('express').NextFunction
 ) => {
   try {
-    await enforceSprintScope(req.params.id, req.actor!);
+    await enforceSprintScope(ps(req.params.id), req.actor!);
     const parsed = updateSprintSchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json(jiraError([], formatZodErrors(parsed.error)));
       return;
     }
-    res.json(await updateSprint(req.params.id, parsed.data, req.actor!));
+    res.json(await updateSprint(ps(req.params.id), parsed.data, req.actor!));
   } catch (err) {
     next(err);
   }
@@ -130,8 +131,8 @@ sprintRouter.post('/sprint/:id', updateSprintHandler);
 sprintRouter.delete(
   '/sprint/:id',
   ah(async (req, res) => {
-    await enforceSprintScope(req.params.id, req.actor!);
-    await deleteSprint(req.params.id, req.actor!);
+    await enforceSprintScope(ps(req.params.id), req.actor!);
+    await deleteSprint(ps(req.params.id), req.actor!);
     res.status(204).send();
   })
 );
@@ -139,29 +140,29 @@ sprintRouter.delete(
 sprintRouter.get(
   '/sprint/:id/issue',
   ah(async (req, res) => {
-    await enforceSprintScope(req.params.id, req.actor!);
+    await enforceSprintScope(ps(req.params.id), req.actor!);
     const { startAt, maxResults } = pageParams(req, { cap: 200, default: 200 });
-    const quickFilterIds = req.query.quickFilterIds
-      ? String(req.query.quickFilterIds)
+    const quickFilterIds = qs(req.query.quickFilterIds)
+      ? String(qs(req.query.quickFilterIds))
           .split(',')
           .map((s) => s.trim())
           .filter(Boolean)
       : undefined;
-    res.json(await listSprintIssues(req.params.id, { startAt, maxResults }, req.actor, { quickFilterIds }));
+    res.json(await listSprintIssues(ps(req.params.id), { startAt, maxResults }, req.actor, { quickFilterIds }));
   })
 );
 
 sprintRouter.post(
   '/sprint/:id/issue',
   ah(async (req, res) => {
-    await enforceSprintScope(req.params.id, req.actor!);
+    await enforceSprintScope(ps(req.params.id), req.actor!);
     const parsed = issueKeysSchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json(jiraError([], formatZodErrors(parsed.error)));
       return;
     }
     if (!keysAllowed(parsed.data.issues, req.actor!, res)) return;
-    await moveIssuesToSprint(req.params.id, parsed.data.issues, req.actor!);
+    await moveIssuesToSprint(ps(req.params.id), parsed.data.issues, req.actor!);
     res.status(204).send();
   })
 );
@@ -169,15 +170,15 @@ sprintRouter.post(
 sprintRouter.get(
   '/board/:boardId/sprint',
   ah(async (req, res) => {
-    await enforceBoardScope(req.params.boardId, req.actor!);
-    const stateParam = String(req.query.state ?? '');
+    await enforceBoardScope(ps(req.params.boardId), req.actor!);
+    const stateParam = String(qs(req.query.state) ?? '');
     const states = stateParam
       ? stateParam
           .split(',')
           .map((s) => s.trim())
           .filter(Boolean)
       : undefined;
-    const sprints = await listSprints(req.params.boardId, states);
+    const sprints = await listSprints(ps(req.params.boardId), states);
     res.json({ maxResults: 50, startAt: 0, total: sprints.length, isLast: true, values: sprints });
   })
 );
@@ -185,15 +186,15 @@ sprintRouter.get(
 sprintRouter.get(
   '/board/:boardId/backlog',
   ah(async (req, res) => {
-    await enforceBoardScope(req.params.boardId, req.actor!);
+    await enforceBoardScope(ps(req.params.boardId), req.actor!);
     const { startAt, maxResults } = pageParams(req, { cap: 200, default: 50 });
-    const quickFilterIds = req.query.quickFilterIds
-      ? String(req.query.quickFilterIds)
+    const quickFilterIds = qs(req.query.quickFilterIds)
+      ? String(qs(req.query.quickFilterIds))
           .split(',')
           .map((s) => s.trim())
           .filter(Boolean)
       : undefined;
-    res.json(await listBacklog(req.params.boardId, { startAt, maxResults }, req.actor, { quickFilterIds }));
+    res.json(await listBacklog(ps(req.params.boardId), { startAt, maxResults }, req.actor, { quickFilterIds }));
   })
 );
 
@@ -231,17 +232,17 @@ sprintRouter.post(
 sprintRouter.get(
   '/epic/:key',
   ah(async (req, res) => {
-    await enforceIssueScope(req.params.key, req.actor!);
-    res.json(await getEpic(req.params.key));
+    await enforceIssueScope(ps(req.params.key), req.actor!);
+    res.json(await getEpic(ps(req.params.key)));
   })
 );
 
 sprintRouter.get(
   '/epic/:key/issue',
   ah(async (req, res) => {
-    await enforceIssueScope(req.params.key, req.actor!);
+    await enforceIssueScope(ps(req.params.key), req.actor!);
     const { startAt, maxResults } = pageParams(req, { cap: 200, default: 50 });
-    res.json(await listEpicIssues(req.params.key, { startAt, maxResults }, req.actor!));
+    res.json(await listEpicIssues(ps(req.params.key), { startAt, maxResults }, req.actor!));
   })
 );
 
@@ -254,11 +255,11 @@ sprintRouter.post(
       return;
     }
     if (!keysAllowed(parsed.data.issues, req.actor!, res)) return;
-    if (req.params.key.toLowerCase() !== 'none') await enforceIssueScope(req.params.key, req.actor!);
-    if (req.params.key.toLowerCase() === 'none') {
+    if (ps(req.params.key).toLowerCase() !== 'none') await enforceIssueScope(ps(req.params.key), req.actor!);
+    if (ps(req.params.key).toLowerCase() === 'none') {
       await removeIssuesFromEpic(parsed.data.issues, req.actor!);
     } else {
-      await moveIssuesToEpic(req.params.key, parsed.data.issues, req.actor!);
+      await moveIssuesToEpic(ps(req.params.key), parsed.data.issues, req.actor!);
     }
     res.status(204).send();
   })

@@ -1,3 +1,4 @@
+import { ps } from '../lib/validation.js';
 // 047 — agent session + question routes. Internal product API; agents drive
 // the same surface via PAT (write scope) — delegation grants no powers (FR-001).
 import { Router, type Router as RouterType } from 'express';
@@ -18,6 +19,7 @@ import {
   claimReadyWork,
   projectAgentActivity,
 } from '../services/agentSessionService.js';
+import { qs } from '../lib/validation.js';
 
 export const agentRouter: RouterType = Router();
 
@@ -27,8 +29,8 @@ const actorOf = (req: { actor?: Actor }): Actor => req.actor as Actor;
 agentRouter.get(
   '/issues/:key/sessions',
   ah(async (req, res) => {
-    await enforceIssueScope(req.params.key, req.actor!);
-    res.json({ sessions: await listIssueSessions(req.params.key) });
+    await enforceIssueScope(ps(req.params.key), req.actor!);
+    res.json({ sessions: await listIssueSessions(ps(req.params.key)) });
   })
 );
 
@@ -38,7 +40,7 @@ agentRouter.get(
 agentRouter.get(
   '/projects/:key/agent-activity',
   ah(async (req, res) => {
-    res.json(await projectAgentActivity(actorOf(req), req.params.key));
+    res.json(await projectAgentActivity(actorOf(req), ps(req.params.key)));
   })
 );
 
@@ -46,7 +48,7 @@ agentRouter.get(
   '/agent-sessions/:id',
   ah(async (req, res) => {
     // 064 US3 — IDOR: session detail is restricted to agent/delegator/admin.
-    const s = await getSession(req.params.id);
+    const s = await getSession(ps(req.params.id));
     assertSessionActor(actorOf(req), s);
     res.json(toSessionView(s));
   })
@@ -64,7 +66,7 @@ agentRouter.post(
       }),
       req
     );
-    res.status(201).json(await emitActivity(actorOf(req), req.params.id, body));
+    res.status(201).json(await emitActivity(actorOf(req), ps(req.params.id), body));
   })
 );
 
@@ -91,9 +93,9 @@ agentRouter.post(
 agentRouter.get(
   '/issues/:key/agent-questions',
   ah(async (req, res) => {
-    await enforceIssueScope(req.params.key, req.actor!);
-    const status = req.query.status ? String(req.query.status) : undefined;
-    const questions = await listIssueQuestions(req.params.key, status);
+    await enforceIssueScope(ps(req.params.key), req.actor!);
+    const status = qs(req.query.status) ? String(qs(req.query.status)) : undefined;
+    const questions = await listIssueQuestions(ps(req.params.key), status);
     res.json({
       questions: questions.map((q) => ({
         id: q.id,
@@ -114,7 +116,7 @@ agentRouter.get(
 agentRouter.get(
   '/agent-questions/:id',
   ah(async (req, res) => {
-    const q = await getQuestion(req.params.id);
+    const q = await getQuestion(ps(req.params.id));
     res.json({
       id: q.id,
       sessionId: q.sessionId,
@@ -134,7 +136,7 @@ agentRouter.post(
   '/agent-questions/:id/answer',
   ah(async (req, res) => {
     const { answer } = parseBody(z.object({ answer: z.string().min(1).max(4000) }), req);
-    const q = await answerQuestion(actorOf(req), req.params.id, answer);
+    const q = await answerQuestion(actorOf(req), ps(req.params.id), answer);
     res.json({ id: q.id, status: q.status, answer: q.answer });
   })
 );

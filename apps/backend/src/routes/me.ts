@@ -1,3 +1,4 @@
+import { ps } from '../lib/validation.js';
 // /api/internal/me/* — user-context surface: notifications, recent views,
 // "Your work". Powers the bell + home page; all scoped to the caller.
 
@@ -5,7 +6,7 @@ import { Router, type Router as RouterType } from 'express';
 import { z } from 'zod';
 import { prisma } from '../prisma.js';
 import { jiraError } from '../lib/errors.js';
-import { formatZodErrors } from '../lib/validation.js';
+import { qs, formatZodErrors } from '../lib/validation.js';
 import { listNotifications, markRead } from '../services/notificationService.js';
 import { getIssueByKey, toIssueResponse } from '../services/issueService.js';
 import { getMyWork, getMyTimesheet } from '../services/meService.js';
@@ -40,7 +41,7 @@ meRouter.get(
   '/notifications',
   ah(async (req, res) => {
     const result = await listNotifications(req.actor!.user.id, {
-      unreadOnly: String(req.query.unreadOnly ?? '') === 'true',
+      unreadOnly: String(qs(req.query.unreadOnly) ?? '') === 'true',
       ...pageParams(req, { cap: 100 }),
     });
     res.json(result);
@@ -172,7 +173,7 @@ meRouter.get(
 meRouter.delete(
   '/sessions/:id',
   ah(async (req, res) => {
-    await revokeSession(req.actor!.user.id, req.params.id);
+    await revokeSession(req.actor!.user.id, ps(req.params.id));
     res.status(204).end();
   })
 );

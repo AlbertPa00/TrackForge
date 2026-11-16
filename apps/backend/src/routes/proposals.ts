@@ -1,3 +1,5 @@
+import { ps } from '../lib/validation.js';
+import { qs } from '../lib/validation.js';
 // /api/internal/proposals — Approvals inbox (US2). Humans (sessions) review;
 // agents (tokens) can list/get only their own proposals.
 
@@ -75,9 +77,9 @@ function toResponse(p: LoadedProposal) {
 proposalsRouter.get(
   '/',
   ah(async (req: Request, res: Response) => {
-    const status = req.query.status ? String(req.query.status) : undefined;
-    const projectKey = req.query.project ? String(req.query.project) : undefined;
-    const issueKey = req.query.issue ? String(req.query.issue) : undefined;
+    const status = qs(req.query.status) ? String(qs(req.query.status)) : undefined;
+    const projectKey = qs(req.query.project) ? String(qs(req.query.project)) : undefined;
+    const issueKey = qs(req.query.issue) ? String(qs(req.query.issue)) : undefined;
     const rows = await listProposals(req.actor!, { status, projectKey, issueKey });
     res.json({ proposals: rows.map(toResponse), total: rows.length });
   })
@@ -86,7 +88,7 @@ proposalsRouter.get(
 proposalsRouter.get(
   '/:id',
   ah(async (req: Request, res: Response) => {
-    res.json(toResponse(await getProposal(req.actor!, req.params.id)));
+    res.json(toResponse(await getProposal(req.actor!, ps(req.params.id))));
   })
 );
 
@@ -102,7 +104,7 @@ proposalsRouter.post(
       res.status(400).json(jiraError([], { body: 'Invalid edits.' }));
       return;
     }
-    res.json(await approveProposal(req.params.id, req.actor!, parsed.data.body));
+    res.json(await approveProposal(ps(req.params.id), req.actor!, parsed.data.body));
   })
 );
 
@@ -116,7 +118,7 @@ proposalsRouter.post(
       res.status(400).json(jiraError([], { reason: 'Invalid reason.' }));
       return;
     }
-    res.json(await rejectProposal(req.params.id, req.actor!, parsed.data.reason));
+    res.json(await rejectProposal(ps(req.params.id), req.actor!, parsed.data.reason));
   })
 );
 

@@ -1,3 +1,4 @@
+import { ps } from '../lib/validation.js';
 // 050 — Docs portal API. Mounted BEFORE the /api/internal requireAuth gate:
 // the router resolves an optional actor itself and audience-filters per page
 // (public → anyone; authed → login or DOCS_PUBLIC=on; admin → admin only).
@@ -34,7 +35,7 @@ docsRouter.get('/search', (req, res) => {
 
 docsRouter.get('/page/:slug', (req, res, next) => {
   try {
-    res.json(getPage(req.params.slug, req.actor ?? null));
+    res.json(getPage(ps(req.params.slug), req.actor ?? null));
   } catch (e) {
     next(e);
   }

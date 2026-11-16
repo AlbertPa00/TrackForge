@@ -1,3 +1,4 @@
+import { ps } from '../lib/validation.js';
 import { Router, type Router as RouterType } from 'express';
 import { z } from 'zod';
 import {
@@ -66,7 +67,7 @@ router.get(
   '/workflows/:id',
   requireAdmin,
   ah(async (req, res) => {
-    res.json(await getWorkflow(req.params.id));
+    res.json(await getWorkflow(ps(req.params.id)));
   })
 );
 
@@ -94,7 +95,7 @@ router.put(
       res.status(400).json(jiraError([], formatZodErrors(parsed.error)));
       return;
     }
-    const wf = await updateWorkflow(req.params.id, parsed.data);
+    const wf = await updateWorkflow(ps(req.params.id), parsed.data);
     await audit(req, 'workflow.update', 'workflow', wf.id, { name: wf.name });
     res.json(wf);
   })
@@ -105,8 +106,8 @@ router.delete(
   '/workflows/:id',
   requireAdmin,
   ah(async (req, res) => {
-    await deleteWorkflow(req.params.id);
-    await audit(req, 'workflow.delete', 'workflow', req.params.id);
+    await deleteWorkflow(ps(req.params.id));
+    await audit(req, 'workflow.delete', 'workflow', ps(req.params.id));
     res.status(204).end();
   })
 );
@@ -122,7 +123,7 @@ const assignSchema = z.object({
 router.post(
   '/projects/:key/workflow',
   ah(async (req, res) => {
-    const key = req.params.key.toUpperCase();
+    const key = ps(req.params.key).toUpperCase();
     const project = await prisma.project.findUnique({ where: { key } });
     if (!project) {
       res.status(404).json(jiraError(['Project does not exist or you do not have permission to see it.']));
@@ -164,7 +165,7 @@ router.get(
   '/workflowschemes/:id',
   requireAdmin,
   ah(async (req, res) => {
-    res.json(await getWorkflowScheme(req.params.id));
+    res.json(await getWorkflowScheme(ps(req.params.id)));
   })
 );
 
@@ -190,7 +191,7 @@ router.put(
       res.status(400).json(jiraError([], formatZodErrors(parsed.error)));
       return;
     }
-    res.json(await updateWorkflowScheme(req.params.id, parsed.data));
+    res.json(await updateWorkflowScheme(ps(req.params.id), parsed.data));
   })
 );
 
@@ -198,7 +199,7 @@ router.delete(
   '/workflowschemes/:id',
   requireAdmin,
   ah(async (req, res) => {
-    await deleteWorkflowScheme(req.params.id);
+    await deleteWorkflowScheme(ps(req.params.id));
     res.status(204).end();
   })
 );
@@ -214,7 +215,7 @@ router.post(
       return;
     }
     const project = await prisma.project.update({
-      where: { key: req.params.key.toUpperCase() },
+      where: { key: ps(req.params.key).toUpperCase() },
       data: { workflowSchemeId: parsed.data.schemeId },
     });
     res.json({ id: project.id, workflowSchemeId: project.workflowSchemeId });

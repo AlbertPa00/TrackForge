@@ -1,5 +1,25 @@
 import { z } from 'zod';
 
+/**
+ * Query-scalar coercion. Express 5 types `req.query` values as
+ * `string | string[]` (repeated params); these routes take singular scalars
+ * per the Jira API contract, so array input narrows to undefined — the same
+ * semantics the codebase's existing `typeof v === 'string'` guards applied.
+ */
+export function qs(v: unknown): string | undefined {
+  return typeof v === 'string' ? v : undefined;
+}
+
+/**
+ * Path-param coercion — same `string | string[]` union as `qs` but params
+ * are required. Named `:param` segments always produce a string at runtime;
+ * the array case only exists for wildcard routes, where first-match is the
+ * correct scalar.
+ */
+export function ps(v: string | string[]): string {
+  return Array.isArray(v) ? v[0]! : v;
+}
+
 export const projectKeySchema = z
   .string()
   .min(1)

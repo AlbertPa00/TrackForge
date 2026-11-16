@@ -216,7 +216,7 @@ describe('openapi drift', () => {
 
     // Walk the Express stack and assert every route is documented.
     const docPaths = Object.keys(doc.paths).map(normalizePath);
-    const actual = listRoutes();
+    const actual = listRoutes(Object.keys(doc.paths));
     const undocumented: string[] = [];
     for (const r of actual) {
       // `GET *` is the SPA static-file fallback, not API surface.
@@ -242,18 +242,57 @@ function normalizePath(p: string): string {
 }
 
 /** Enumerate mounted routes from the Express app (test-local, dev-only). */
-function listRoutes(): { method: string; path: string }[] {
+function listRoutes(docPaths: string[]): { method: string; path: string }[] {
   const out: { method: string; path: string }[] = [];
-  const stack = (app as unknown as { _router: { stack: unknown[] } })._router.stack;
+  // Express 5: app.router (was app._router) and layers carry opaque `matchers`
+  // functions instead of a regexp — the raw mount path is not stored. Probe
+  // each matcher with candidate paths: a non-end mount matcher returns
+  // `{ path: <matched prefix> }` for any path under it.
+  const stack = (app as unknown as { router: { stack: any[] } }).router.stack;
 
-  const mountPath = (layer: { regexp: RegExp }): string => {
-    const src = layer.regexp.source
-      .replace('^\\/', '/')
-      .replace(/\\\/\?\(\?=\\\/\|\$\)$/, '')
-      // bare router.use(subRouter) mounts leave /?(?=\/|$) after the ^\/ strip.
-      .replace(/^\/\?\(\?=\\\/\|\$\)$/, '')
-      .replace(/\\\//g, '/');
-    return src === '/' ? '' : src;
+  // Mirror of the app.use mounts in main.ts — the fallback candidates so a
+  // fully-undocumented mount still resolves to its prefix (the mount path
+  // always matches its own matcher). Keep in sync with main.ts.
+  const MOUNT_PREFIXES = [
+    '/api/internal', '/api/internal/admin', '/api/internal/admin/idps',
+    '/api/internal/admin/oauth', '/api/internal/ai', '/api/internal/auth',
+    '/api/internal/automation', '/api/internal/boards', '/api/internal/bulk',
+    '/api/internal/customfields', '/api/internal/dev',
+    '/api/internal/dev/gitlab/connections', '/api/internal/dev/repositories',
+    '/api/internal/docs', '/api/internal/export', '/api/internal/filters',
+    '/api/internal/issues', '/api/internal/issuesecurityschemes',
+    '/api/internal/jql', '/api/internal/me', '/api/internal/metadata',
+    '/api/internal/notificationschemes', '/api/internal/projects',
+    '/api/internal/proposals', '/api/internal/reports', '/api/internal/roadmap',
+    '/api/internal/search', '/rest/agile/1.0', '/rest/agile/1.0/backlog',
+    '/rest/agile/1.0/board', '/rest/api/2', '/rest/api/3', '/rest/devinfo/0.10',
+    '/rest/webhooks/1.0', '/scim/v2',
+  ];
+  const candidates = [
+    ...docPaths.map((p) => p.replace(/\{[^}]+\}/g, 'x')),
+    ...MOUNT_PREFIXES,
+  ];
+
+  const mountPath = (
+    layer: {
+      slash?: boolean;
+      matchers?: ((p: string) => { path: string } | false)[];
+    },
+    prefix: string
+  ): string => {
+    if (layer.slash) return ''; // bare router.use(subRouter) mount
+    // Inner routers see the path with the outer mount prefix already stripped,
+    // so probe them with prefix-relative candidates.
+    const rel = candidates
+      .filter((c) => c === prefix || c.startsWith(prefix + '/'))
+      .map((c) => c.slice(prefix.length) || '/');
+    for (const m of layer.matchers ?? []) {
+      for (const c of rel.length ? rel : ['/']) {
+        const r = m(c);
+        if (r) return r.path;
+      }
+    }
+    return '';
   };
 
   const walk = (layers: any[], prefix: string) => {
@@ -264,7 +303,7 @@ function listRoutes(): { method: string; path: string }[] {
           if (method !== '_all') out.push({ method: method.toUpperCase(), path });
         }
       } else if (layer.name === 'router' && layer.handle?.stack) {
-        walk(layer.handle.stack, prefix + mountPath(layer));
+        walk(layer.handle.stack, prefix + mountPath(layer, prefix));
       }
     }
   };

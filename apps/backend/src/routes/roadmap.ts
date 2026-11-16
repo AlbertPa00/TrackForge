@@ -1,3 +1,4 @@
+import { ps } from '../lib/validation.js';
 import { Router } from 'express';
 import { getRoadmap } from '../services/roadmapService.js';
 import { ah } from '../lib/http.js';
@@ -12,7 +13,7 @@ roadmapRouter.get(
   '/:boardId',
   ah(async (req, res) => {
     res.json(
-      await getRoadmap(req.params.boardId, req.actor!, {
+      await getRoadmap(ps(req.params.boardId), req.actor!, {
         level: q(req, 'level'),
         status: q(req, 'status'),
         assignee: q(req, 'assignee'),

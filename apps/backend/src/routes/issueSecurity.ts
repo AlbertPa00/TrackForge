@@ -1,3 +1,4 @@
+import { ps } from '../lib/validation.js';
 // Sprint 031 — issue security scheme endpoints (US4).
 // Jira read shape: GET /rest/api/2/issuesecurityschemes returns schemes with
 // levels+members. Full CRUD lives under /api/internal (admin-gated), plus
@@ -83,7 +84,7 @@ issueSecurityJiraRouter.get(
   '/:id',
   ah(async (req, res) => {
     const schemes = await listSchemes();
-    const s = schemes.find((x) => x.id === req.params.id);
+    const s = schemes.find((x) => x.id === ps(req.params.id));
     if (!s) throw new JiraApiError(404, jiraError(['Issue security scheme does not exist.']));
     res.json(schemeJson(s));
   })
@@ -113,7 +114,7 @@ issueSecurityAdminRouter.put(
   requireAdmin,
   ah(async (req, res) => {
     const input = body(z.object({ name: z.string().min(1).optional(), description: z.string().optional() }), req);
-    res.json(await updateScheme(req.params.id, input));
+    res.json(await updateScheme(ps(req.params.id), input));
   })
 );
 
@@ -121,7 +122,7 @@ issueSecurityAdminRouter.delete(
   '/:id',
   requireAdmin,
   ah(async (req, res) => {
-    await deleteScheme(req.params.id);
+    await deleteScheme(ps(req.params.id));
     res.status(204).end();
   })
 );
@@ -131,7 +132,7 @@ issueSecurityAdminRouter.post(
   requireAdmin,
   ah(async (req, res) => {
     const input = body(levelSchema, req);
-    res.status(201).json(await addLevel(req.params.schemeId, input));
+    res.status(201).json(await addLevel(ps(req.params.schemeId), input));
   })
 );
 
@@ -140,7 +141,7 @@ issueSecurityAdminRouter.put(
   requireAdmin,
   ah(async (req, res) => {
     const input = body(levelSchema.partial(), req);
-    res.json(await updateLevel(req.params.levelId, input));
+    res.json(await updateLevel(ps(req.params.levelId), input));
   })
 );
 
@@ -148,7 +149,7 @@ issueSecurityAdminRouter.delete(
   '/levels/:levelId',
   requireAdmin,
   ah(async (req, res) => {
-    await deleteLevel(req.params.levelId);
+    await deleteLevel(ps(req.params.levelId));
     res.status(204).end();
   })
 );
@@ -160,6 +161,6 @@ projectSecurityRouter.post(
   requireAdmin,
   ah(async (req, res) => {
     const input = body(z.object({ schemeId: z.string().nullable() }), req);
-    res.json(await assignScheme(req.params.key, input.schemeId));
+    res.json(await assignScheme(ps(req.params.key), input.schemeId));
   })
 );

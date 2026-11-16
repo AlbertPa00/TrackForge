@@ -4,7 +4,7 @@
   "private": true,
   "description": "Self-hosted Jira-compatible issue tracking platform",
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=22.12.0"
   },
   "packageManager": "pnpm@9.15.0",
   "scripts": {
@@ -23,7 +23,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9",
-    "@types/node": "^20.14.0",
+    "@types/node": "^24.0.0",
     "eslint": "^9.39.5",
     "globals": "^17.14.0",
     "prettier": "^3.10.1",

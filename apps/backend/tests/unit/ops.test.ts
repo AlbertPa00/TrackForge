@@ -8,14 +8,16 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 // Pin the in-memory adapter — Prisma auto-loads .env, so a dev's REDIS_URL
 // would otherwise flip the factory to BullMQ and break the timing assertions.
+// '' (not delete): the var must stay present or a later file's .env load
+// re-injects the dev URL — falsy still selects the in-memory runner.
 let savedRedis: string | undefined;
 beforeAll(() => {
   savedRedis = process.env.REDIS_URL;
-  delete process.env.REDIS_URL;
+  process.env.REDIS_URL = '';
   resetDurableRunner();
 });
 afterAll(() => {
-  if (savedRedis) process.env.REDIS_URL = savedRedis;
+  process.env.REDIS_URL = savedRedis ?? '';
   resetDurableRunner();
 });
 

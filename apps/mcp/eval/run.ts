@@ -805,14 +805,18 @@ async function main() {
       check('claimed session is running with claim trigger', sess.status === 'running' && sess.trigger === 'claim');
 
       // 40. Composite PUT (US5) — fields+transition+comment+worklog, one call.
-      const trList = await agentTf.call<{ transitions: { id: string; name: string }[] }>(
+      const trList = await agentTf.call<{ transitions: { id: string; name: string; hasScreen?: boolean }[] }>(
         'GET', `/rest/api/2/issue/${claimed.issue.key}/transitions`);
+      const chosenTr = trList.transitions.find((t) => !t.hasScreen) ?? trList.transitions[0];
       const composite = await agentTf.call<{
         steps: { fields?: string; transition?: { id: string }; comment?: { id: string }; worklog?: { id: string; timeSpentSeconds: number } };
       }>('PUT', `/rest/api/2/issue/${claimed.issue.key}`, {
         body: {
-          fields: { summary: `${run} composite claim` },
-          ...(trList.transitions[0] ? { transition: { id: trList.transitions[0].id } } : {}),
+          fields: {
+            summary: `${run} composite claim`,
+            ...(chosenTr?.hasScreen ? { resolution: { name: 'Done' } } : {}),
+          },
+          ...(chosenTr ? { transition: { id: chosenTr.id } } : {}),
           comment: { body: 'eval composite comment' },
           worklog: { timeSpent: '25m', comment: 'eval composite work' },
         },
@@ -852,6 +856,183 @@ async function main() {
       const parked = await gatedTf.call<{ pendingApproval?: boolean; proposalId?: string }>(
         'POST', '/api/internal/agent/claim', { body: { projectKey: pk } });
       check('always-policy claim parks as proposal', parked.pendingApproval === true && !!parked.proposalId);
+    }
+
+    // 42b. 071 — fenced leases, optimistic versions, town hall, inbox, context pack.
+    if (claimed.sessionId && claimed.issue?.key) {
+      const ck = claimed.issue.key;
+      const lease = (claimed as { lease?: { fenceToken?: number; expiresAt?: string } }).lease;
+      check('claim mints a fenced driver lease', typeof lease?.fenceToken === 'number' && !!lease?.expiresAt);
+
+      const hb = await agentTf.call<{ fenceToken?: number; leaseExpiresAt?: string; paused?: boolean; unreadInbox?: number }>(
+        'POST', `/api/internal/agent-sessions/${claimed.sessionId}/heartbeat`, { body: {} });
+      check('heartbeat renews lease + signals pause/inbox',
+        typeof hb.fenceToken === 'number' && hb.paused === false && typeof hb.unreadInbox === 'number',
+        JSON.stringify(hb).slice(0, 120));
+
+      const staleVer = await agentTf.call('PUT', `/rest/api/2/issue/${ck}`, {
+        body: { fields: { summary: 'stale version write' }, expectedVersion: -1 },
+      }).then(() => 'allowed').catch((e) => `status ${(e as { status?: number }).status}`);
+      check('stale expected_version → 409', staleVer === 'status 409', staleVer);
+      const staleFence = await agentTf.call('PUT', `/rest/api/2/issue/${ck}`, {
+        body: { fields: { summary: 'stale fence write' }, fenceToken: -1 },
+      }).then(() => 'allowed').catch((e) => `status ${(e as { status?: number }).status}`);
+      check('foreign fence_token → 409', staleFence === 'status 409', staleFence);
+
+      // Town hall: channel → topic → post → stance → resolve round-trip.
+      const channels = await agentTf.call<{ channels: { id: string; slug: string; projectKey?: string | null }[] }>(
+        'GET', `/api/internal/town-hall/channels?project=${pk}`);
+      const room = channels.channels.find((c) => c.projectKey === pk) ?? channels.channels[0];
+      check('town-hall channels visible to agent', !!room, `${channels.channels.length} channels`);
+      if (room) {
+        const topic = await agentTf.call<{ topic: { id: string; status: string } }>(
+          'POST', '/api/internal/town-hall/topics', {
+            body: {
+              channelId: room.id, kind: 'rfc', title: `eval ${run}: adopt fence tokens?`,
+              body: 'Proposal: every driver write carries the issue fence token.', speechAct: 'proposal',
+              linkedIssueKeys: [ck],
+            },
+          });
+        check('open town-hall topic', /^[A-Za-z0-9_-]+$/.test(topic.topic?.id ?? ''), JSON.stringify(topic).slice(0, 80));
+        if (topic.topic?.id) {
+          const tid = topic.topic.id;
+          const post = await agentTf.call<{ id: number; speechAct: string }>(
+            'POST', `/api/internal/town-hall/topics/${tid}/posts`,
+            { body: { speechAct: 'evidence', body: 'Claim path already mints tokens; see eval.' } });
+          check('speech-act post lands', post.speechAct === 'evidence');
+          const tally = await agentTf.call<{ endorse: number; quorumMet?: boolean }>(
+            'PUT', `/api/internal/town-hall/topics/${tid}/stances`, { body: { stance: 'endorse' } });
+          check('endorse stance tallied', tally.endorse >= 1);
+          const bareObject = await agentTf.call('PUT', `/api/internal/town-hall/topics/${tid}/stances`, {
+            body: { stance: 'object' },
+          }).then(() => 'allowed').catch((e) => `status ${(e as { status?: number }).status}`);
+          check('object without reason → 400', bareObject === 'status 400', bareObject);
+          const dagPreview = await agentTf.call<{ dryRun?: boolean; plan?: { tasks?: unknown[] } | null }>(
+            'POST', `/api/internal/town-hall/topics/${tid}/resolve?dryRun=true`, {
+              body: {
+                decisionSummary: 'Adopt fence tokens on all driver writes.',
+                compileDag: { tasks: [{ tempId: 't1', summary: `eval ${run}: follow-up`, blockedByTempIds: [] }] },
+              },
+            });
+          check('resolve dryRun previews DAG', dagPreview.dryRun === true && Array.isArray(dagPreview.plan?.tasks));
+          const resolved = await agentTf.call<{ topic: { status: string }; compiled?: { tempId: string; issueKey: string }[] }>(
+            'POST', `/api/internal/town-hall/topics/${tid}/resolve`, {
+              body: {
+                decisionSummary: 'Adopt fence tokens on all driver writes.',
+                compileDag: { tasks: [{ tempId: 't1', summary: `eval ${run}: town hall follow-up`, blockedByTempIds: [] }] },
+              },
+            });
+          check('resolve records decision + compiles DAG',
+            resolved.topic?.status === 'decided' && (resolved.compiled?.length ?? 0) >= 1,
+            JSON.stringify(resolved).slice(0, 120));
+          for (const i of resolved.compiled ?? []) created.push(i.issueKey);
+        }
+      }
+
+      const inbox = await agentTf.call<{ items: unknown[]; unreadCount: number }>('GET', '/api/internal/agent-inbox');
+      check('durable inbox reads back', Array.isArray(inbox.items) && typeof inbox.unreadCount === 'number');
+      const roster = await agentTf.call<{ agents: { accountId: string; status: string }[] }>(
+        'GET', `/api/internal/agents/roster?project=${pk}`);
+      check('roster lists the claiming agent online/busy',
+        roster.agents.some((a) => a.accountId === agentUser.accountId && a.status !== 'offline'));
+      const pack = await agentTf.call<{ issueKey?: string; version?: number; lastFenceToken?: number; sections?: unknown[] }>(
+        'GET', `/api/internal/issues/${ck}/context-pack`);
+      check('context pack bootstraps issue + version',
+        pack.issueKey === ck && typeof pack.version === 'number', JSON.stringify(pack).slice(0, 120));
+
+      // Human break → zombie session fenced out.
+      const broken = await tf.call<{ broken?: boolean }>('POST', `/api/internal/issues/${ck}/lease/break`, { body: {} });
+      check('human breaks the driver lease', broken.broken === true);
+      const zombie = await agentTf.call('POST', `/api/internal/agent-sessions/${claimed.sessionId}/heartbeat`, { body: {} })
+        .then(() => 'allowed').catch((e) => `status ${(e as { status?: number }).status}`);
+      check('broken session cannot heartbeat (zombie kill)', zombie === 'status 409' || zombie === 'status 404', zombie);
+
+      // 072/073 — proof-carrying work & human verifiability:
+      // digest_only vs server-computed hash_verified, 422 mismatch, receipt detail,
+      // dossier comment on release, provenance, and SHA-pinned deliverable review.
+      const fakeSha = Array.from({ length: 64 }, () => 'ab'[Math.floor(Math.random() * 2)]).join('');
+      const digestOnly = await agentTf.call<{ id?: string; verification?: string }>('POST', '/api/internal/work-receipts', {
+        body: { issueKey: ck, kind: 'command', sha256: fakeSha, summary: `eval ${run}: external digest` },
+      });
+      check('bare sha256 receipt stays digest_only', digestOnly.verification === 'digest_only', JSON.stringify(digestOnly).slice(0, 100));
+
+      const sampleDiff = `--- a/eval.ts\n+++ b/eval.ts\n@@ -1 +1 @@\n-export const run = 0;\n+export const run = ${run};\n`;
+      const receipt = await agentTf.call<{ id?: string; verification?: string; hasInlineContent?: boolean }>('POST', '/api/internal/work-receipts', {
+        body: {
+          issueKey: ck,
+          kind: 'diff',
+          content: sampleDiff,
+          changedFiles: ['eval.ts'],
+          summary: `eval ${run}: 1 file diff`,
+          metrics: { passed: 3, failed: 0 },
+        },
+      });
+      check('inline content receipt server-verifies to hash_verified',
+        !!receipt.id && receipt.verification === 'hash_verified' && receipt.hasInlineContent === true,
+        JSON.stringify(receipt).slice(0, 100));
+      const rcDetail = await agentTf.call<{ content?: string; changedFiles?: string[] }>('GET', `/api/internal/work-receipts/${receipt.id}`);
+      check('GET /work-receipts/:id returns inline diff + changedFiles',
+        rcDetail.content === sampleDiff && (rcDetail.changedFiles ?? []).includes('eval.ts'));
+      const mismatch = await agentTf.call('POST', '/api/internal/work-receipts', {
+        body: { issueKey: ck, kind: 'diff', sha256: 'f'.repeat(64), content: sampleDiff, summary: 'tampered' },
+      }).then(() => 'allowed').catch((e) => `status ${(e as { status?: number }).status}`);
+      check('mismatched sha256 vs content → 422', mismatch === 'status 422', mismatch);
+      const rcList = await agentTf.call<{ receipts?: { id: string }[] }>('GET', `/api/internal/issues/${ck}/receipts`);
+      check('issue receipts list contains it', (rcList.receipts ?? []).some((r) => r.id === receipt.id));
+      const badSha = await agentTf.call('POST', '/api/internal/work-receipts', {
+        body: { kind: 'diff', sha256: 'not-hex', summary: 'bad' },
+      }).then(() => 'allowed').catch((e) => `status ${(e as { status?: number }).status}`);
+      check('malformed sha256 → 400', badSha === 'status 400', badSha);
+
+      // Re-lease + release ready_for_review → dossier comment + deliverable sign-off
+      const relLease = await agentTf.call<{ sessionId: string }>('POST', `/api/internal/issues/${ck}/lease`, {
+        body: { branchName: `eval/${run}`, baseSha: 'a'.repeat(40) },
+      });
+      await agentTf.call('POST', `/api/internal/agent-sessions/${relLease.sessionId}/traces`, {
+        body: { traces: [{ kind: 'file_edit', target: 'eval.ts' }] },
+      });
+      const released = await agentTf.call<{ dossierCommentId?: string; driftStatus?: string }>(
+        'POST',
+        `/api/internal/agent-sessions/${relLease.sessionId}/release`,
+        {
+          body: {
+            outcome: 'ready_for_review',
+            summary: `Ready for review on ${ck}`,
+            headSha: 'b'.repeat(40),
+            receiptIds: [receipt.id!],
+          },
+        }
+      );
+      check('release emits dossierCommentId + clean drift', !!released.dossierCommentId && released.driftStatus === 'clean', JSON.stringify(released));
+      const prov = await agentTf.call<{ deliverableReview?: { status?: string }; changedFiles?: string[] }>(
+        'GET', `/api/internal/issues/${ck}/provenance`
+      );
+      check('provenance reports awaiting_review + changedFiles',
+        prov.deliverableReview?.status === 'awaiting_review' && (prov.changedFiles ?? []).includes('eval.ts'));
+      const selfApprove = await agentTf.call('POST', `/api/internal/issues/${ck}/deliverable-review`, {
+        body: { verdict: 'approved', body: 'self lgtm' },
+      }).then(() => 'allowed').catch((e) => `status ${(e as { status?: number }).status}`);
+      check('driver cannot self-approve deliverable → 403', selfApprove === 'status 403', selfApprove);
+      const humanApprove = await tf.call<{ verdict?: string; stale?: boolean }>('POST', `/api/internal/issues/${ck}/deliverable-review`, {
+        body: { verdict: 'approved', body: 'Diff verified, LGTM.' },
+      });
+      check('human approves deliverable + pins receipts', humanApprove.verdict === 'approved' && humanApprove.stale === false);
+
+      const ledger = await agentTf.call<{ entries?: { kind: string }[] }>('GET', `/api/internal/issues/${ck}/ledger`);
+      check('issue ledger readable + records deliverable_approved',
+        Array.isArray(ledger.entries) && ledger.entries.some((e) => e.kind === 'deliverable_approved'));
+      const advisory = await tf.call<{ id?: string }>('POST', `/api/internal/projects/${pk}/advisories`, {
+        body: { pathGlob: 'src/eval/**', summary: `eval ${run}: cap eval fixtures at 1MB`, severity: 'info' },
+      });
+      check('admin publishes advisory', !!advisory.id, JSON.stringify(advisory).slice(0, 100));
+      const advList = await agentTf.call<{ advisories?: { id: string; pathGlob: string }[] }>(
+        'GET', `/api/internal/projects/${pk}/advisories?path=${encodeURIComponent('src/eval/check.ts')}`);
+      check('agent lists path-matching advisory', (advList.advisories ?? []).some((a) => a.id === advisory.id));
+      const fhealth = await agentTf.call<{ status?: string }>('GET', '/api/internal/fleet/health');
+      check('fleet health reports ok|degraded', fhealth.status === 'ok' || fhealth.status === 'degraded');
+      const fmetrics = await agentTf.call<{ fleet?: { openSessions?: number; waitlistDepth?: number; activeLocks?: number } }>('GET', '/api/internal/fleet/metrics');
+      check('fleet metrics exposes gauges',
+        typeof fmetrics.fleet?.openSessions === 'number' && typeof fmetrics.fleet?.waitlistDepth === 'number' && typeof fmetrics.fleet?.activeLocks === 'number');
     }
   }
 

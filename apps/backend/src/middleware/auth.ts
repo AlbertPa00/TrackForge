@@ -241,6 +241,17 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   }
 
   req.actor = actor;
+
+  // 071 — fleet brake: a paused fleet's agent writes 423 here (humans, reads,
+  // heartbeats and inbox acks stay open). Runs after scope checks so the 423
+  // is never masked by a 403 an agent couldn't fix anyway.
+  try {
+    const { assertNotPaused } = await import('../services/fleetPause.js');
+    await assertNotPaused(req, actor);
+  } catch (err) {
+    next(err);
+    return;
+  }
   next();
 }
 
@@ -463,6 +474,103 @@ export function authRateLimit(req: Request, res: Response, next: NextFunction) {
     const b = authBuckets.get(principal)!;
     res.setHeader('Retry-After', String(Math.ceil((b.reset - now) / 1000)));
     res.status(429).json(jiraError(['Too many attempts — try again later.']));
+    return;
+  }
+  next();
+}
+
+// --- 072 FR-013: per-agent circuit breaker ---
+// The global rate limiter shares one bucket per principal; a single looping
+// agent still consumes the whole fleet's error budget and burns DB writes.
+// This breaker tracks writes AND client errors (400/409/422/423) per agent in
+// a sliding window; crossing either budget trips a cool-down that returns 429
+// with a jittered Retry-After — the other 499 agents keep working.
+// 3 consecutive trips demote the agent to approvalPolicy 'always' so a
+// thrashing bot can't keep re-entering the hot path unreviewed.
+
+const AGENT_WRITE_RPM = Number(process.env.AGENT_WRITE_RPM ?? 120);
+const AGENT_ERROR_BREAKER = Number(process.env.AGENT_ERROR_BREAKER ?? 12);
+const BREAKER_COOLDOWN_MS = 15_000;
+
+interface AgentBudget {
+  writes: number;
+  errors: number;
+  reset: number;
+  until: number; // cool-down end timestamp (0 = closed circuit)
+  trips: number;
+}
+const agentBudgets = new Map<string, AgentBudget>();
+
+/** Test/ops hook — clear a tripped breaker (also the circuit-reset endpoint). */
+export function resetAgentCircuit(agentUserId: string) {
+  agentBudgets.delete(agentUserId);
+}
+
+export function agentCircuitBreaker(req: Request, res: Response, next: NextFunction) {
+  const user = req.actor?.user;
+  if (!user || user.type !== 'agent') return next();
+  const isWrite = !['GET', 'HEAD', 'OPTIONS'].includes(req.method);
+  const now = Date.now();
+  let b = agentBudgets.get(user.id);
+  if (!b || b.reset < now) {
+    b = { writes: 0, errors: 0, reset: now + WINDOW_MS, until: b?.until ?? 0, trips: b?.trips ?? 0 };
+    agentBudgets.set(user.id, b);
+  }
+
+  if (b.until > now) {
+    const retrySec = Math.ceil((b.until - now) / 1000) + Math.floor(Math.random() * 5);
+    res.setHeader('Retry-After', String(retrySec));
+    res.status(429).json(
+      jiraError([], { circuit: `Agent circuit breaker open — slow down and retry after ${retrySec}s. Repeated trips escalate to proposal-only approval.` })
+    );
+    return;
+  }
+
+  if (isWrite) b.writes += 1;
+  // Count client errors on the way out — looping writes that keep 409ing are
+  // the failure mode this exists for.
+  res.on('finish', () => {
+    if (isWrite && [400, 409, 422, 423].includes(res.statusCode)) {
+      const cur = agentBudgets.get(user.id);
+      if (cur) cur.errors += 1;
+    }
+  });
+
+  const tripped = b.until <= now && (b.writes > AGENT_WRITE_RPM || b.errors >= AGENT_ERROR_BREAKER);
+  if (tripped) {
+    b.until = now + BREAKER_COOLDOWN_MS;
+    b.trips += 1;
+    // Owner alert + escalation — fire-and-forget, never block the request.
+    void (async () => {
+      try {
+        const { prisma } = await import('../prisma.js');
+        const { emitEvent } = await import('../services/eventService.js');
+        const ownerId = (user as { ownerId?: string | null }).ownerId ?? null;
+        await emitEvent(prisma as never, req.actor!, {
+          type: 'agent.circuit_tripped',
+          projectId: null,
+          payload: {
+            agent: { accountId: user.id, displayName: user.displayName },
+            writes: b!.writes,
+            errors: b!.errors,
+            trips: b!.trips,
+            inbox: ownerId
+              ? [{ userId: ownerId, reason: 'directive', actionHint: `Agent ${user.displayName} tripped its circuit breaker (${b!.errors} errors) — check its loop.` }]
+              : [],
+          },
+        });
+        if (b!.trips >= 3) {
+          await prisma.user.update({ where: { id: user.id }, data: { approvalPolicy: 'always' } });
+        }
+      } catch (e) {
+        console.error('[breaker] owner alert failed:', e);
+      }
+    })();
+    const retrySec = Math.ceil(BREAKER_COOLDOWN_MS / 1000) + Math.floor(Math.random() * 5);
+    res.setHeader('Retry-After', String(retrySec));
+    res.status(429).json(
+      jiraError([], { circuit: `Agent circuit breaker open — slow down and retry after ${retrySec}s.` })
+    );
     return;
   }
   next();

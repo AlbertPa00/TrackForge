@@ -58,6 +58,7 @@ import AttachmentsPanel from './AttachmentsPanel.js';
 import LinkedIssuesPanel from './LinkedIssuesPanel.js';
 import DevelopmentPanel from './DevelopmentPanel.js';
 import AgentSessionsPanel from './AgentSessionsPanel.js';
+import DeliverableProvenanceStrip from './DeliverableProvenanceStrip.js';
 import IssueProposalsPanel from './IssueProposalsPanel.js';
 import DelegatePicker from './DelegatePicker.js';
 import IssueActionsMenu from './IssueActionsMenu.js';
@@ -1545,6 +1546,11 @@ export default function IssueDetailView({
                 })()}
               </dl>
             </ModuleBox>
+            <DeliverableProvenanceStrip
+              issueKey={issue.key}
+              projectKey={fields.project.key}
+              canEdit={canEdit}
+            />
             <CollapsibleSection title="Description" className="mb-6">
               {editingDescription ? (
                 <MarkdownEditor

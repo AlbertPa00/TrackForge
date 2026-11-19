@@ -19,6 +19,7 @@ type CommentRow = {
   createdAt: Date;
   updatedAt: Date;
   visibility?: unknown;
+  metadataJson?: unknown;
   author: Parameters<typeof toUserResponse>[0];
   issue: { issueNumber: number; project: { key: string } };
 };
@@ -35,6 +36,8 @@ export function toCommentResponse(c: CommentRow) {
     channel: c.channel,
     // 031: Jira visibility — emitted only when restricted
     ...(c.visibility ? { visibility: c.visibility } : {}),
+    // 073: Structured dossier / deliverable-review metadata for rich UI cards
+    ...(c.metadataJson ? { metadata: c.metadataJson } : {}),
   };
 }
 

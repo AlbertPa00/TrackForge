@@ -20,6 +20,9 @@ model Project {
   workflowId                 String?
   aiEnabled                  Boolean                     @default(true)
   agentGuidance              String? // 047 US5 — per-project system-context text for AI calls
+  // 071 — fleet brake: agent-type writes 423 while paused (reads/heartbeats still work).
+  agentPaused                Boolean                     @default(false)
+  agentPauseReason           String?
   categoryId                 String?
   archived                   Boolean                     @default(false)
   createdAt                  DateTime                    @default(now())
@@ -51,6 +54,12 @@ model Project {
   roleActors                 ProjectRoleActor[]
   components                 Component[]
   versions                   Version[]
+  townHallChannels           TownHallChannel[]
+  workReceipts               WorkReceipt[]
+  resourceLocks              ResourceLock[]
+  contentionWaiters          ContentionWaiter[]
+  repoAdvisories             RepoAdvisory[]
+  deliverableReviews         DeliverableReview[]
 
   @@index([key])
   @@index([archived])
@@ -211,6 +220,20 @@ model User {
   oauthGrants         OAuthGrant[]
   oauthDeviceCodes    OAuthDeviceCode[]
   oauthServiceClients OAuthClient[]            @relation("OAuthServiceUser")
+  agentProfile        AgentProfile?
+  inboxItems          AgentInboxItem[]
+  townHallTopics      TownHallTopic[]         @relation("TopicAuthor")
+  resolvedTopics      TownHallTopic[]         @relation("TopicResolver")
+  townHallPosts       TownHallPost[]
+  townHallStances     TownHallStance[]
+  targetedQuestions   AgentQuestion[]         @relation("QuestionTarget")
+  stigmergicTraces    StigmergicTrace[]
+  workReceipts        WorkReceipt[]
+  resourceLocks       ResourceLock[]
+  contentionWaiters   ContentionWaiter[]
+  ledgerEntries       IssueLedgerEntry[]
+  repoAdvisories      RepoAdvisory[]
+  deliverableReviews  DeliverableReview[]
 
   @@index([type, active])
 }
@@ -361,6 +384,11 @@ model Issue {
   archived             Boolean                @default(false)
   archivedAt           DateTime?
   archivedById         String?
+  // 071 — optimistic concurrency (ETag/If-Match) + monotonic lease fencing.
+  // version bumps on every field update/transition; lastFenceToken bumps each
+  // time a driver lease is acquired/expired/broken so stale holders 409.
+  version              Int                    @default(1)
+  lastFenceToken       Int                    @default(0)
   devItems             DevelopmentItemIssue[]
   createdAt            DateTime               @default(now())
   updatedAt            DateTime               @updatedAt
@@ -398,6 +426,12 @@ model Issue {
   votes            IssueVote[]
   remoteLinks      RemoteIssueLink[]
   keyAliases       IssueKeyAlias[]
+  townHallTopicLinks TownHallTopicIssue[]
+  traces           StigmergicTrace[]
+  ledgerEntries    IssueLedgerEntry[]
+  workReceipts     WorkReceipt[]
+  sourceAdvisories RepoAdvisory[]        @relation("AdvisorySource")
+  deliverableReviews DeliverableReview[]
   /// FTS column — generated + GIN-indexed in migration 20261107140018_filters_fts.
   /// Declared here so prisma diff stops proposing to drop it; app writes via SQL.
   searchVector     Unsupported("tsvector")?
@@ -440,6 +474,8 @@ model Comment {
   channel    String   @default("api") // ui | api | mcp | copilot
   // 031: Jira visibility restriction — {type:'role'|'group', value:string}
   visibility Json?
+  // 073: Structured dossier / deliverable-review metadata for rich UI cards
+  metadataJson Json?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
@@ -659,6 +695,12 @@ model DomainEvent {
   issueId      String? // dangling after issue delete — payload carries the snapshot
   payload      Json // { issueKey, projectKey, changelog: {items}, issue: snapshot, extra… }
   dispatchedAt DateTime?
+  // 072 — dead-letter bookkeeping: a poison event backs off exponentially
+  // and quarantines after DLQ_MAX_ATTEMPTS instead of stalling the drain.
+  attempts       Int       @default(0)
+  nextAttemptAt  DateTime?
+  lastError      String?
+  deadLetteredAt DateTime?
 
   actor          User?             @relation("EventActor", fields: [actorId], references: [id])
   project        Project?          @relation(fields: [projectId], references: [id])
@@ -668,6 +710,7 @@ model DomainEvent {
   automationRuns AutomationRun[]
 
   @@index([dispatchedAt, id])
+  @@index([nextAttemptAt])
   @@index([occurredAt])
   @@index([projectId, id])
   @@index([issueId, id])
@@ -885,20 +928,42 @@ model AgentSession {
   issueId        String
   agentUserId    String
   delegatorId    String?
-  trigger        String    @default("delegate") // delegate | mention | rule | manual
-  status         String    @default("running") // running | blocked | needs-answer | done | failed
+  trigger        String    @default("delegate") // delegate | mention | rule | manual | claim | lease
+  status         String    @default("running") // running | blocked | needs-answer | done | failed | expired | released | broken
   lastActivityAt DateTime  @default(now())
   startedAt      DateTime  @default(now())
   finishedAt     DateTime?
+  // 071 — fenced lease: one open driver per issue (partial unique index in
+  // migration SQL); reviewer/observer sessions coexist without delegateId.
+  role           String    @default("driver") // driver | reviewer | observer
+  fenceToken     Int? // snapshot of Issue.lastFenceToken at acquire time
+  ttlSec         Int       @default(900)
+  heartbeatAt    DateTime  @default(now())
+  leaseExpiresAt DateTime? // null = legacy unleased session (stale-sweep still applies)
+  worktreeRef    String? // branch/worktree the driver is operating in
+  handoff        Json? // structured handoff envelope on release/expiry
+  // 072 — git grounding + trace-vs-diff reconciliation on release.
+  baseSha      String?
+  headSha      String?
+  branchName   String?
+  driftStatus  String  @default("untracked") // untracked | clean | undeclared_edits | phantom_handoff
+  driftReport  Json? // {declared[], observed[], undeclared[]}
+  // 073 — consolidated Work Product Dossier comment written on release.
+  dossierCommentId String?
 
-  issue     Issue           @relation(fields: [issueId], references: [id], onDelete: Cascade)
-  agent     User            @relation("SessionAgent", fields: [agentUserId], references: [id])
-  delegator User?           @relation("SessionDelegator", fields: [delegatorId], references: [id])
-  questions AgentQuestion[]
+  issue      Issue            @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  agent      User             @relation("SessionAgent", fields: [agentUserId], references: [id])
+  delegator  User?            @relation("SessionDelegator", fields: [delegatorId], references: [id])
+  questions  AgentQuestion[]
   activities AgentActivity[]
+  traces     StigmergicTrace[]
+  locks      ResourceLock[]
+  receipts   WorkReceipt[]
+  deliverableReviews DeliverableReview[]
 
   @@index([issueId, status])
   @@index([agentUserId, status])
+  @@index([leaseExpiresAt])
 }
 
 /// 070 — append-only activity stream (was a `Json` column on AgentSession:
@@ -931,10 +996,15 @@ model AgentQuestion {
   expiresAt    DateTime?
   createdAt    DateTime  @default(now())
   answeredAt   DateTime?
+  // 071 — peer consultation: target a specific agent/human by id or summon by
+  // role tag; null targets keep the delegator/human behaviour from 047.
+  targetUserId String?
+  targetRole   String?
 
   session    AgentSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   issue      Issue        @relation(fields: [issueId], references: [id], onDelete: Cascade)
   answeredBy User?        @relation("QuestionAnswerer", fields: [answeredById], references: [id])
+  targetUser User?        @relation("QuestionTarget", fields: [targetUserId], references: [id])
 
   @@index([sessionId, status])
   @@index([issueId, status])
@@ -1284,6 +1354,7 @@ model Attachment {
   issue  Issue     @relation(fields: [issueId], references: [id], onDelete: Cascade)
   author User      @relation(fields: [authorId], references: [id])
   token  ApiToken? @relation(fields: [tokenId], references: [id], onDelete: SetNull)
+  workReceipts WorkReceipt[]
 
   @@index([issueId])
 }
@@ -2028,4 +2099,347 @@ model DevDelivery {
   repo DevRepository @relation(fields: [repoId], references: [id], onDelete: Cascade)
 
   @@unique([repoId, deliveryId])
+}
+
+// ---------- Sprint 071: Agent Town Hall & fleet coordination ----------
+
+/// Extended metadata + live presence for User(type='agent').
+model AgentProfile {
+  userId              String    @id
+  role                String    @default("generalist") // planner | coder | reviewer | triage | security | qa | generalist
+  skills              String[]  @default([]) // normalized lowercase tags
+  model               String? // self-declared model id
+  bio                 String?
+  maxConcurrentLeases Int       @default(1)
+  lastHeartbeatAt     DateTime?
+  lastSummonedAt      DateTime? // round-robin tie-breaker for @role:<skill> summons
+  updatedAt           DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([role])
+  @@index([lastHeartbeatAt])
+  @@index([skills(ops: ArrayOps)], type: Gin)
+}
+
+/// Durable, bounded wake-up mailbox for agents (and a unified feed humans may
+/// also read). Fed by mentions, role summons, peer questions, review requests,
+/// DAG unblocks, trace collisions and human directives.
+model AgentInboxItem {
+  id        BigInt    @id @default(autoincrement())
+  userId    String
+  eventId   BigInt?
+  projectId String?
+  issueId   String?
+  topicId   String?
+  reason    String // mention | role_summon | peer_question | question_answered | review_requested | trace_collision | dag_unblocked | directive
+  payload   Json // compact actionable envelope: {issueKey?, topicId?, fromActor, snippet, actionHint}
+  ackedAt   DateTime?
+  createdAt DateTime  @default(now())
+
+  user  User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  topic TownHallTopic? @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  @@index([userId, ackedAt, id])
+  @@index([createdAt])
+}
+
+/// A persistent room — global (projectId null) or project-scoped. Seeded per
+/// project: town-hall, architecture, blockers, reviews.
+model TownHallChannel {
+  id               String   @id @default(uuid())
+  projectId        String?
+  slug             String
+  name             String
+  description      String?
+  agentCooldownSec Int      @default(15) // floor control: min gap between unprompted posts by one agent on one topic
+  archived         Boolean  @default(false)
+  createdById      String?
+  createdAt        DateTime @default(now())
+
+  project Project?        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  topics  TownHallTopic[]
+
+  @@unique([projectId, slug])
+  @@index([projectId, archived])
+}
+
+/// A typed deliberation unit inside a channel — RFC, discovery, blocker,
+/// incident or standup. Resolving a decided topic can compile an issue DAG.
+model TownHallTopic {
+  id              String    @id @default(uuid())
+  channelId       String
+  projectId       String? // denormalized from channel.projectId for visibility scoping
+  kind            String    @default("rfc") // rfc | discovery | blocker | incident | standup
+  status          String    @default("open") // open | voting | decided | archived
+  title           String
+  authorId        String
+  quorumRequired  Int       @default(1)
+  requiredRoles   String[]  @default([])
+  // 072 — when set, requiredRoles endorsements only count while the topic
+  // holds >=1 evidence post carrying a verified WorkReceipt.
+  requireEvidenceReceipt Boolean @default(false)
+  decisionSummary String?
+  resolvedById    String?
+  resolvedAt      DateTime?
+  postCount       Int       @default(0)
+  lastActivityAt  DateTime  @default(now())
+  createdAt       DateTime  @default(now())
+
+  channel    TownHallChannel      @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  author     User                 @relation("TopicAuthor", fields: [authorId], references: [id])
+  resolvedBy User?                @relation("TopicResolver", fields: [resolvedById], references: [id])
+  posts      TownHallPost[]
+  stances    TownHallStance[]
+  issueLinks TownHallTopicIssue[]
+  inboxItems AgentInboxItem[]
+
+  @@index([channelId, status, lastActivityAt(sort: Desc)])
+  @@index([projectId, status])
+}
+
+/// A threaded speech-act post — not free-form chat: every entry carries an
+/// explicit act so readers can query only critiques/evidence/decisions.
+model TownHallPost {
+  id        BigInt   @id @default(autoincrement())
+  topicId   String
+  parentId  BigInt? // nested reply within the topic (max depth 4 enforced in service)
+  authorId  String
+  channel   String   @default("api") // ui | api | mcp | copilot
+  speechAct String // proposal | critique | evidence | question | answer | synthesis | decision
+  body      String
+  refs      Json? // {issueKeys?: string[], files?: string[], commitSha?: string}
+  createdAt DateTime @default(now())
+
+  topic    TownHallTopic  @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  parent   TownHallPost?  @relation("PostThread", fields: [parentId], references: [id], onDelete: Cascade)
+  replies  TownHallPost[] @relation("PostThread")
+  author   User           @relation(fields: [authorId], references: [id])
+  receipts WorkReceipt[]
+
+  @@index([topicId, id])
+  @@index([topicId, authorId, createdAt])
+}
+
+/// Zero-prose stance — agreement without new evidence is a vote, not a post.
+/// `object` requires a cited reason; unresolved objections block quorum.
+model TownHallStance {
+  id        String   @id @default(uuid())
+  topicId   String
+  actorId   String
+  stance    String // endorse | object | abstain
+  reason    String? // required when stance = 'object'
+  resolved  Boolean  @default(false)
+  updatedAt DateTime @updatedAt
+
+  topic TownHallTopic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  actor User          @relation(fields: [actorId], references: [id], onDelete: Cascade)
+
+  @@unique([topicId, actorId])
+  @@index([topicId, stance])
+}
+
+/// Binds a topic to issues — `discusses` (linked), `compiled` (created by the
+/// resolution DAG), `blocks` (decision gates the issue's transition validator).
+model TownHallTopicIssue {
+  topicId  String
+  issueId  String
+  relation String @default("compiled") // compiled | discusses | blocks
+
+  topic TownHallTopic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  issue Issue         @relation(fields: [issueId], references: [id], onDelete: Cascade)
+
+  @@id([topicId, issueId])
+  @@index([issueId])
+}
+
+/// Ephemeral file/symbol intent trace, strictly bound to an open AgentSession
+/// lease — parallel worktrees sense overlaps before merge time.
+model StigmergicTrace {
+  id        String   @id @default(uuid())
+  projectId String
+  issueId   String
+  sessionId String
+  actorId   String
+  kind      String // file_read | file_edit | symbol_edit | resource_lock
+  target    String // POSIX-normalized repo path or symbol id
+  summary   String?
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  // 072 — a handed-off driver's traces outlive the session while its branch
+  // stays unmerged, so parallel agents still sense in-flight work.
+  pendingMerge Boolean @default(false)
+
+  issue   Issue        @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  session AgentSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  actor   User         @relation(fields: [actorId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, kind, target])
+  @@index([projectId, target, expiresAt])
+  @@index([expiresAt])
+}
+
+// ---------- 072 — proof-carrying work, resource locks, waitlists, ledger, advisories ----------
+
+/// A content-addressed proof artifact attached to a session, issue, or town-
+/// hall post. `verification` upgrades from self-attested (`hash_verified`) to
+/// `scm_corroborated` when the commit sha matches an ingested DevelopmentItem,
+/// or `signed_ci` when produced by a dedicated attestation token.
+model WorkReceipt {
+  id           String   @id @default(uuid())
+  projectId    String
+  issueId      String?
+  sessionId    String?
+  topicPostId  BigInt?
+  authorId     String
+  kind         String // diff | test_run | benchmark | build | command
+  sha256       String // content hash of the artifact (diff text, JUnit xml, ...)
+  gitCommitSha String?
+  gitBranch    String?
+  summary      String
+  metricsJson  Json? // {passed?, failed?, durationMs?, filesChanged?: string[], ...}
+  artifactUri  String?
+  // 073 — normalized touched files + server-verified inline/Attachment storage.
+  changedFiles String[] @default([])
+  attachmentId String?
+  contentType  String?
+  verification String   @default("digest_only") // digest_only | hash_verified | scm_corroborated | human_attested | signed_ci
+  verifiedAt   DateTime?
+  createdAt    DateTime @default(now())
+
+  project   Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  issue     Issue?         @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  session   AgentSession?  @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  topicPost TownHallPost?  @relation(fields: [topicPostId], references: [id], onDelete: SetNull)
+  author    User           @relation(fields: [authorId], references: [id])
+  attachment Attachment?   @relation(fields: [attachmentId], references: [id], onDelete: SetNull)
+  payload   WorkReceiptPayload?
+  ledgerEntries IssueLedgerEntry[]
+
+  @@index([issueId, verification])
+  @@index([sessionId])
+  @@index([topicPostId])
+  @@index([gitCommitSha])
+  @@index([attachmentId])
+}
+
+/// Enforceable, TTL-fenced lock on a repo path or prefix glob — turns the
+/// advisory `resource_lock` trace into a hard 409 for contenders.
+model ResourceLock {
+  id         String   @id @default(uuid())
+  projectId  String
+  sessionId  String
+  agentUserId String
+  pathPattern String // normalized POSIX path or prefix glob (dir/**)
+  mode       String   @default("exclusive") // exclusive | shared
+  fenceToken Int
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+
+  project Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  session AgentSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  agent   User         @relation(fields: [agentUserId], references: [id])
+
+  @@index([projectId, expiresAt])
+  @@index([projectId, pathPattern])
+}
+
+/// FIFO queue slot created on a lease/lock 409 — the next live waiter gets a
+/// `lease_available` / `lock_available` wake-up on release, break, or sweep.
+model ContentionWaiter {
+  id         String   @id @default(uuid())
+  projectId  String
+  targetKind String // issue | path
+  targetKey  String // issue id or normalized path pattern
+  userId     String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([targetKind, targetKey, userId])
+  @@index([targetKind, targetKey, createdAt])
+  @@index([expiresAt])
+}
+
+/// Canonical per-issue ledger — every lease lifecycle, handoff, verified
+/// receipt, decision compilation and peer answer lands as an immutable entry
+/// so the issue timeline shows what the fleet actually did.
+model IssueLedgerEntry {
+  id        BigInt   @id @default(autoincrement())
+  issueId   String
+  actorId   String?
+  kind      String // lease_claimed | lease_handed_off | lease_broken | lease_expired | receipt_verified | peer_question_answered | topic_compiled | drift_flagged
+  summary   String
+  payload   Json?
+  receiptId String?
+  sessionId String?
+  createdAt DateTime @default(now())
+
+  issue   Issue        @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  actor   User?        @relation(fields: [actorId], references: [id])
+  receipt WorkReceipt? @relation(fields: [receiptId], references: [id], onDelete: SetNull)
+
+  @@index([issueId, id(sort: Desc)])
+}
+
+/// Path-scoped, verified lesson ("never hand-edit schema.prisma") promoted
+/// from resolved incident topics or doNotRepeat handoffs — auto-injected into
+/// context packs when traces/targetFiles match pathGlob.
+model RepoAdvisory {
+  id            String   @id @default(uuid())
+  projectId     String
+  pathGlob      String
+  severity      String   @default("info") // info | warn | critical
+  summary       String
+  createdById   String
+  sourceIssueId String?
+  active        Boolean  @default(true)
+  expiresAt     DateTime?
+  createdAt     DateTime @default(now())
+
+  project     Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy   User    @relation(fields: [createdById], references: [id])
+  sourceIssue Issue?  @relation("AdvisorySource", fields: [sourceIssueId], references: [id], onDelete: SetNull)
+
+  @@index([projectId, active])
+}
+
+// ---------- Sprint 073: human verifiability, inspectable receipts & deliverable sign-off ----------
+
+/// Lazy-loaded inline receipt text (<= 64 KiB unified diff, test stdout, JUnit
+/// summary, benchmark table) so listIssueReceipts stays compact.
+model WorkReceiptPayload {
+  receiptId   String   @id
+  contentText String
+  byteLength  Int
+  createdAt   DateTime @default(now())
+
+  receipt WorkReceipt @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+}
+
+/// Post-execution acceptance sign-off on an issue's agent deliverable, pinned to
+/// exact headSha + receiptIds so later edits invalidate stale approvals.
+model DeliverableReview {
+  id               String    @id @default(uuid())
+  projectId        String
+  issueId          String
+  sessionId        String?
+  reviewerId       String
+  verdict          String // approved | changes_requested
+  body             String?
+  pinnedHeadSha    String?
+  pinnedReceiptIds String[]  @default([])
+  commentId        String?
+  supersededAt     DateTime?
+  createdAt        DateTime  @default(now())
+
+  project  Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  issue    Issue         @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  session  AgentSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  reviewer User          @relation(fields: [reviewerId], references: [id])
+
+  @@index([issueId, createdAt(sort: Desc)])
+  @@index([projectId, verdict])
 }

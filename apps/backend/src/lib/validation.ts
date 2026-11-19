@@ -93,6 +93,12 @@ export const updateIssueSchema = z.object({
     .optional()
     .default({}),
   update: updateOpsSchema.optional(),
+  /** 071 — optimistic concurrency: the issue.version from the caller's last
+   *  read; a moved version 409s instead of silently lost-updating. Any int is
+   *  accepted at the schema layer — staleness is a domain 409, not a 400. */
+  expectedVersion: z.number().int().optional(),
+  /** 071 — lease fencing token from claimLease/claimReadyWork. */
+  fenceToken: z.number().int().nullable().optional(),
 });
 
 export const bulkCreateSchema = z.object({
@@ -129,6 +135,9 @@ export const transitionIssueSchema = z.object({
       comment: z.array(z.object({ add: z.object({ body: z.string().optional() }).optional() })).optional(),
     })
     .optional(),
+  /** 071 — same optimistic-concurrency + lease-fence contract as PUT issue. */
+  expectedVersion: z.number().int().optional(),
+  fenceToken: z.number().int().nullable().optional(),
 });
 
 /** 031: Jira comment/worklog visibility — {type:'role'|'group', value} or null. */

@@ -52,6 +52,10 @@ folder owns **how** and the task checklist.
 | 063 | Launch wedge | Done | sprint doc 063 |
 | 064 | Pre-release security audit | Done — remediation appendix in `docs/pre-release-audit.md` | sprint doc 064 |
 | 065 | Repo cleanup — dead code, dedup, layer repairs, docs hygiene | In progress | this sprint |
+| 067–068 | Resolution insight · copilot workspace | Done | sprint docs 067–068 |
+| 071 | Agent Town Hall — fleet deliberation, fenced leases, durable inboxes, traces | Done | [sprint doc 071](sprints/071-agent-town-hall.md) |
+| 072 | Proof-Carrying Work & Fleet Reliability — work receipts, path locks, waitlists, issue ledger, durable dispatch | Done | [sprint doc 072](sprints/072-proof-carrying-work-fleet-reliability.md) |
+| 073 | Human Verifiability & Deliverable Sign-Off — inspectable receipt payloads, dossier comments, RFC↔issue provenance, SHA-pinned human review gates | Done | [sprint doc 073](sprints/073-human-verifiability-artifact-provenance.md) |
 
 Sprints 001–004 were specified directly in spec-kit, without a sprint doc in `docs/sprints/`. Sprint
 doc numbering starts at 005. **030 and 046 were reserved for hardening gates
@@ -210,6 +214,9 @@ with an explicit gate.
 | | 062 | [Backlog & Settings QA Sweep](sprints/062-backlog-settings-qa.md) | Detailed | 033, 054, 058, 052, 060, 031 | S |
 | **LW Launch gate** | 064 | [Pre-Release Security Audit](sprints/064-pre-release-security-audit.md) | Detailed | 063, 053, 036, 049, 018, 034 | L |
 | | 065 | [Repo Cleanup: dedup, dead code, docs](sprints/065-repo-cleanup.md) | Detailed | 064 | L |
+| **Post-launch fleet** | 071 | [Agent Town Hall](sprints/071-agent-town-hall.md) | Detailed | 047, 053, 056, 063, 065 | L |
+| | 072 | [Proof-Carrying Work & Fleet Reliability](sprints/072-proof-carrying-work-fleet-reliability.md) | Detailed | 071, 016, 038, 051, 070 | L |
+| | 073 | [Human Verifiability & Deliverable Sign-Off](sprints/073-human-verifiability-artifact-provenance.md) | Detailed | 071, 072, 008, 009, 018, 029 | L |
 
 **Recurring obligations (every sprint from 017 on, see §4)**: ship an `EntityImporter` for each
 new importable entity; complete a threat-model entry for each new attack surface; assign new MCP
@@ -243,6 +250,9 @@ Audit wave (deep-audit findings): 053 security/scope ─► ┬─► 054 board/
                                                   └─► 057 copilot/automation ┘
 060 admin-console parity ─► 061 admin-console QA sweep (deep page-by-page QA findings)
                        └► 062 backlog & settings QA sweep (same audit method on scrum surfaces)
+
+Fleet wave: 047 sessions ─► 053 scopes ─► 056 contracts ─► 071 agent town hall
+  (fenced leases + durable inboxes + typed deliberation + stigmergic traces + fleet pause)
 
 Every feature sprint from 017 on ──(EntityImporter)──► 017 importer grows continuously
 ```

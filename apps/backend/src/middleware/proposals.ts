@@ -44,7 +44,7 @@ const INTERNAL_DESTRUCTIVE = /^\/api\/internal\/(bulk\/delete|issues\/[^/?]+\/mo
 // route around `always` either (bulk ops + clone/move; 053 US4). The agent's
 // own loop (sessions, questions, prefs, AI) stays free.
 const INTERNAL_REST_CLASS =
-  /^\/api\/internal\/(bulk\/(edit|transition|move|delete|comment|watch|link)|issues\/[^/?]+\/(move|clone)|agent\/claim)(\/|$)/;
+  /^\/api\/internal\/(bulk\/(edit|transition|move|delete|comment|watch|link)|issues\/[^/?]+\/(move|clone|lease)|agent\/claim|town-hall\/[^/?]+\/resolve|fleet\/pause|projects\/[^/?]+\/pause)(\/|$)/;
 
 function isDestructive(req: Request, path: string): boolean {
   return req.method === 'DELETE' || INTERNAL_DESTRUCTIVE.test(path);

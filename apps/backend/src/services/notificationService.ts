@@ -69,6 +69,36 @@ export async function generateNotifications(ev: DomainEvent): Promise<void> {
         reason: ev.type === 'agent_session.blocked' ? 'agent_stalled' : 'agent_failed',
       });
   }
+  // 073 FR-005 — Active routing for review-ready deliverables & flagged drift:
+  // alert the human assignee, delegator, agent owner, or project lead.
+  if (ev.type === 'agent_session.released') {
+    const rp = p as {
+      outcome?: string;
+      driftStatus?: string;
+      agentOwnerId?: string | null;
+      projectLeadId?: string | null;
+    };
+    const humanTargets = [
+      p.issue?.fields?.assignee?.accountId,
+      delegator,
+      rp.agentOwnerId,
+      rp.projectLeadId,
+    ].filter((uid): uid is string => Boolean(uid) && uid !== actorId);
+    if (rp.outcome === 'ready_for_review') {
+      for (const uid of humanTargets) {
+        if (!creates.some((c) => c.userId === uid)) {
+          creates.push({ userId: uid, reason: 'deliverable_review_requested' });
+        }
+      }
+    }
+    if (rp.driftStatus === 'phantom_handoff' || rp.driftStatus === 'undeclared_edits') {
+      for (const uid of humanTargets) {
+        if (!creates.some((c) => c.userId === uid)) {
+          creates.push({ userId: uid, reason: 'agent_drift' });
+        }
+      }
+    }
+  }
 
   // watching — anyone watching the issue except the actor (and not already notified)
   if (WATCHED_TYPES.has(ev.type) && issueId) {

@@ -114,14 +114,43 @@ export function useEventStream(opts?: { onIssueEvent?: (ev: TfEvent) => void }) 
       if (ev.issueKey && (ev.type.startsWith('agent_session.') || ev.type.startsWith('agent_question.'))) {
         qc.invalidateQueries({ queryKey: ['agent-sessions', ev.issueKey] });
         qc.invalidateQueries({ queryKey: ['agent-questions', ev.issueKey] });
+        qc.invalidateQueries({ queryKey: ['issue-ledger', ev.issueKey] });
+        qc.invalidateQueries({ queryKey: ['issue-provenance', ev.issueKey] });
+        if (ev.type === 'agent_session.released') {
+          qc.invalidateQueries({ queryKey: ['comments', ev.issueKey] });
+        }
         // 058 US5 — board/backlog badge map follows live agent state.
         qc.invalidateQueries({ queryKey: ['agent-activity'] });
+      }
+      // 073 — live updates for server-verified receipts + deliverable sign-off.
+      if (ev.type.startsWith('work_receipt.') || ev.type.startsWith('deliverable_review.')) {
+        const key = ev.issueKey ?? (ev as unknown as { payload?: { issueKey?: string } }).payload?.issueKey;
+        if (key) {
+          qc.invalidateQueries({ queryKey: ['issue-receipts', key] });
+          qc.invalidateQueries({ queryKey: ['issue-ledger', key] });
+          qc.invalidateQueries({ queryKey: ['issue-provenance', key] });
+          qc.invalidateQueries({ queryKey: ['deliverable-reviews', key] });
+          qc.invalidateQueries({ queryKey: ['comments', key] });
+        }
       }
       // Proposal create/resolve events carry issueKey too — refresh the
       // issue-page review panel and any open approvals inbox.
       if (ev.type.startsWith('proposal_')) {
         qc.invalidateQueries({ queryKey: ['proposals'] });
         if (ev.issueKey) qc.invalidateQueries({ queryKey: ['issue-proposals', ev.issueKey] });
+      }
+      // 071 — town hall + fleet events: refresh topic feeds/details, the
+      // session board, inbox badge and the trace heatmap.
+      if (ev.type.startsWith('town_hall.')) {
+        qc.invalidateQueries({ queryKey: ['town-hall-topics'] });
+        qc.invalidateQueries({ queryKey: ['town-hall-channels'] });
+        const topicId = (ev as unknown as { payload?: { topicId?: string } }).payload?.topicId;
+        if (topicId) qc.invalidateQueries({ queryKey: ['town-hall-topic', topicId] });
+      }
+      if (ev.type.startsWith('agent_session.') || ev.type === 'agent_trace.collision' || ev.type === 'dag.unblocked') {
+        qc.invalidateQueries({ queryKey: ['fleet-sessions'] });
+        qc.invalidateQueries({ queryKey: ['project-traces'] });
+        qc.invalidateQueries({ queryKey: ['agent-inbox'] });
       }
     });
     // 047 US5-3 — ephemeral ai.progress frames land in a query slot the

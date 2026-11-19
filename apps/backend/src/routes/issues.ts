@@ -170,6 +170,8 @@ function toUpdateInput(body: {
     security?: unknown;
   };
   update?: Record<string, { set?: unknown; add?: unknown; remove?: unknown; edit?: unknown }[]>;
+  expectedVersion?: number;
+  fenceToken?: number | null;
 }): UpdateIssueInput {
   const f = body.fields ?? {};
   const input: UpdateIssueInput = {
@@ -194,6 +196,8 @@ function toUpdateInput(body: {
     security: f.security,
     timeTracking: extractTimeTracking(f as Record<string, unknown>),
     customFields: extractCfInputs(f as Record<string, unknown>),
+    expectedVersion: body.expectedVersion,
+    fenceToken: body.fenceToken,
   };
 
   for (const [field, ops] of Object.entries(body.update ?? {})) {
@@ -534,7 +538,12 @@ router.post(
       return;
     }
 
-    const body = { fields: parsed.data.fields, update: parsed.data.update };
+    const body = {
+      fields: parsed.data.fields,
+      update: parsed.data.update,
+      expectedVersion: parsed.data.expectedVersion,
+      fenceToken: parsed.data.fenceToken,
+    };
 
     if (isDryRun(req)) {
       const preview = await previewTransition(key, parsed.data.transition.id, req.actor!, body);
@@ -580,7 +589,12 @@ router.put(
     // shape as POST /transitions (resolution, assignee, update.comment).
     const hasFieldOps = Object.keys(parsed.data.fields ?? {}).length > 0 || parsed.data.update !== undefined;
     const transitionBody = parsed.data.transition
-      ? { fields: parsed.data.transition.fields, update: parsed.data.transition.update }
+      ? {
+          fields: parsed.data.transition.fields,
+          update: parsed.data.transition.update,
+          expectedVersion: parsed.data.expectedVersion,
+          fenceToken: parsed.data.fenceToken,
+        }
       : undefined;
     const issue = await getIssueByKey(key);
     const opts = adjustOpts(req);

@@ -223,16 +223,130 @@ export class DurableRunner {
   }
 }
 
+/**
+ * 072 — probed failover adapter. `BullMQDurableRunner` connects lazily and
+ * never fails fast on a dead Redis: ticks silently vanish and the outbox
+ * stalls (observed live: 26 undispatched events, zero inbox materialization).
+ * This wrapper probes Redis health and falls back to the Postgres/in-process
+ * runner — ticks then run locally and handlers still serialize on the
+ * Postgres advisory lock, so multi-instance correctness is preserved.
+ */
+export class FailoverRunner implements DurablePort {
+  private bull: BullMQDurableRunner;
+  private mem = new DurableRunner();
+  private degraded = false;
+  private probing = false;
+  private lastProbeAt = 0;
+  private lastError: string | null = null;
+  private probeTimer: NodeJS.Timeout;
+
+  constructor(private redisUrl: string) {
+    this.bull = new BullMQDurableRunner(redisUrl);
+    // Periodic health probe — flips runner mode both ways without restart.
+    this.probeTimer = setInterval(() => void this.probe(), 5_000);
+    this.probeTimer.unref?.();
+    void this.probe();
+  }
+
+  private async probe(): Promise<void> {
+    if (this.probing) return;
+    this.probing = true;
+    try {
+      await Promise.race([
+        this.bull.queue.getJobCounts(),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('redis probe timeout')), 1_000)),
+      ]);
+      if (this.degraded) console.warn('[jobs] redis recovered — durable runner back to bullmq');
+      this.degraded = false;
+      this.lastError = null;
+    } catch (e) {
+      if (!this.degraded) console.error('[jobs] redis unreachable — durable runner degraded to postgres fallback:', e);
+      this.degraded = true;
+      this.lastError = String(e instanceof Error ? e.message : e);
+    } finally {
+      this.lastProbeAt = Date.now();
+      this.probing = false;
+    }
+  }
+
+  private active(): DurablePort {
+    return this.degraded ? this.mem : this.bull;
+  }
+
+  register(name: string, handler: (p: unknown, j: Job) => Promise<void>): void {
+    // Both runners always get the handler so a mid-flight failover keeps
+    // ticking — the Postgres advisory lock prevents double execution.
+    this.bull.register(name, handler);
+    this.mem.register(name, handler);
+  }
+
+  async enqueue(name: string, payload: unknown, opts: JobOptions = {}): Promise<Job | null> {
+    try {
+      const job = await Promise.race([
+        this.active().enqueue(name, payload, opts),
+        new Promise<Job | null>((_, rej) => setTimeout(() => rej(new Error('enqueue timeout')), 1_000)),
+      ]);
+      if (job !== null) return job;
+      // BullMQ deduped (returned null) — nothing to do.
+      if (!this.degraded) return null;
+      return this.mem.enqueue(name, payload, opts);
+    } catch (e) {
+      if (!this.degraded) {
+        console.error('[jobs] enqueue failed — switching to postgres fallback:', e);
+        this.degraded = true;
+        this.lastError = String(e instanceof Error ? e.message : e);
+      }
+      return this.mem.enqueue(name, payload, opts);
+    }
+  }
+
+  list(state?: string) {
+    return this.active().list(state);
+  }
+  get(id: string) {
+    return this.active().get(id);
+  }
+  retry(id: string) {
+    return this.active().retry(id);
+  }
+  async flush() {
+    await this.active().flush();
+    if (this.degraded) await this.mem.flush();
+  }
+  async close() {
+    clearInterval(this.probeTimer);
+    await Promise.allSettled([this.bull.close(), this.mem.close()]);
+  }
+
+  status() {
+    return {
+      mode: this.degraded ? ('postgres_fallback' as const) : ('bullmq' as const),
+      degraded: this.degraded,
+      lastProbeAt: this.lastProbeAt ? new Date(this.lastProbeAt).toISOString() : null,
+      lastError: this.lastError,
+    };
+  }
+}
+
 let durableRunner: DurablePort | null = null;
 /**
  * 016 FR-001: the durable-job port. BullMQ on Redis when `REDIS_URL` is set
  * (prod / multi-instance), deterministic in-memory otherwise (dev, tests).
+ * 072 — wrapped in FailoverRunner so a dead Redis degrades instead of
+ * silently stalling the outbox.
  */
 export function getDurableRunner(): DurablePort {
   if (!durableRunner) {
-    durableRunner = process.env.REDIS_URL ? new BullMQDurableRunner(process.env.REDIS_URL) : new DurableRunner();
+    durableRunner = process.env.REDIS_URL ? new FailoverRunner(process.env.REDIS_URL) : new DurableRunner();
   }
   return durableRunner;
+}
+
+/** 072 — runner health for /fleet/health. */
+export function runnerStatus(): { mode: string; degraded: boolean; lastProbeAt: string | null; lastError: string | null } {
+  const r = getDurableRunner();
+  if (r instanceof FailoverRunner) return r.status();
+  return { mode: process.env.REDIS_URL ? 'bullmq' : 'inprocess', degraded: false, lastProbeAt: null, lastError: null };
 }
 /** Test hook — force a fresh adapter (e.g. after changing REDIS_URL). */
 export function resetDurableRunner() {

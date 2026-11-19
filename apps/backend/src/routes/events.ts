@@ -121,7 +121,20 @@ eventsRouter.get(
       res.write(`id: ${ev.id}\nevent: tf-event\ndata: ${JSON.stringify(toEventResponse(ev))}\n\n`);
     }
 
-    sseSubscribe(res, allowed, actor, scope);
+    // 071 — positive subscription filters: ?types=a,b limits event types,
+    // ?channels=id1,id2 limits to Town Hall channel activity, and
+    // ?inbox=1 restricts the socket to events whose payload targets THIS
+    // actor — the fleet's wake-up channel (union semantics between clauses).
+    const types = String(qs(req.query.types) ?? '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const channelIds = String(qs(req.query.channels) ?? '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const inboxOnly = ['1', 'true', 'yes'].includes(String(qs(req.query.inbox) ?? '').toLowerCase());
+    sseSubscribe(res, allowed, actor, scope, { types, channelIds, inboxOnly });
 
     const heartbeat = setInterval(() => {
       try {

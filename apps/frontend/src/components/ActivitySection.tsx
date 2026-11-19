@@ -21,6 +21,7 @@ import UserAvatar from './UserAvatar.js';
 import UserHoverCard from './UserHoverCard.js';
 import { MyMonthLogStrip } from './TimeLoggedCard.js';
 import ConfirmDialog from './ConfirmDialog.js';
+import ReceiptInspectorDrawer from './ReceiptInspectorDrawer.js';
 import { Markdown, MarkdownEditor } from './Markdown.js';
 import { formatDateTime, parseDate } from '../lib/format.js';
 import { useIssuePermissions } from '../hooks/usePermissions.js';
@@ -119,6 +120,7 @@ function CommentItem({
   meId,
   isAdmin,
   usersMap,
+  onInspectReceipt,
 }: {
   c: Comment;
   issueKey: string;
@@ -126,12 +128,15 @@ function CommentItem({
   meId?: string;
   isAdmin?: boolean;
   usersMap: Map<string, string>;
+  onInspectReceipt?: (receiptId: string) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [confirmDel, setConfirmDel] = useState(false);
   const qc = useQueryClient();
   const canEdit = c.author.accountId === meId || isAdmin;
   const edited = c.updated !== c.created;
+  const meta = c.metadata;
+  const metaReceiptIds = meta?.receiptIds ?? meta?.pinnedReceiptIds ?? [];
 
   const del = useMutation({
     mutationFn: () => deleteComment(issueKey, c.id),
@@ -177,6 +182,45 @@ function CommentItem({
           />
         ) : (
           <>
+            {meta?.kind && (
+              <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]">
+                {meta.kind === 'agent_dossier' && (
+                  <span className="rounded bg-atl-b-50 px-1.5 py-0.5 font-semibold uppercase text-atl-b-500">
+                    Work Product Dossier
+                  </span>
+                )}
+                {meta.kind === 'deliverable_review' && (
+                  <span
+                    className={`rounded px-1.5 py-0.5 font-semibold uppercase ${
+                      meta.verdict === 'approved' ? 'bg-atl-g-50 text-atl-g-500' : 'bg-atl-r-50 text-atl-r-500'
+                    }`}
+                  >
+                    {meta.verdict === 'approved' ? 'Deliverable Approved' : 'Changes Requested'}
+                  </span>
+                )}
+                {meta.driftStatus && meta.driftStatus !== 'untracked' && (
+                  <span
+                    className={`rounded px-1.5 py-0.5 font-medium ${
+                      meta.driftStatus === 'clean' ? 'bg-atl-g-50 text-atl-g-500' : 'bg-atl-r-50 text-atl-r-500'
+                    }`}
+                  >
+                    drift: {meta.driftStatus.replace(/_/g, ' ')}
+                  </span>
+                )}
+                {onInspectReceipt &&
+                  metaReceiptIds.map((rid, idx) => (
+                    <button
+                      key={rid}
+                      type="button"
+                      onClick={() => onInspectReceipt(rid)}
+                      className="rounded border border-atl-n-30 bg-atl-n-10 px-2 py-0.5 font-mono text-[10px] font-medium text-atl-b-400 hover:bg-atl-b-50 hover:underline"
+                      title={`Inspect attached proof artifact ${rid}`}
+                    >
+                      Inspect Artifact #{idx + 1}
+                    </button>
+                  ))}
+              </div>
+            )}
             <Markdown text={resolved} className="mt-0.5" />
             {canEdit && (
               <div className="mt-0.5 flex gap-2 text-xs text-atl-n-200">
@@ -370,6 +414,7 @@ export default function ActivitySection({
   const [tab, setTab] = useState<Tab>('all');
   const [newestFirst, setNewestFirst] = useState(true);
   const [commentMax, setCommentMax] = useState(10);
+  const [inspectReceiptId, setInspectReceiptId] = useState<string | null>(null);
   const { can } = useIssuePermissions(issue.key);
   const canComment = can('ADD_COMMENTS');
   // One fetch, server-ordered: the window always starts at the first comment
@@ -433,6 +478,7 @@ export default function ActivitySection({
             meId={me?.accountId}
             isAdmin={me?.isAdmin}
             usersMap={usersMap}
+            onInspectReceipt={(rid) => setInspectReceiptId(rid)}
           />
         ),
       });
@@ -533,6 +579,7 @@ export default function ActivitySection({
       ) : (
         <ul className="space-y-4">{entries.map((e) => e.node)}</ul>
       )}
+      <ReceiptInspectorDrawer receiptId={inspectReceiptId} onClose={() => setInspectReceiptId(null)} />
     </section>
   );
 }

@@ -249,6 +249,10 @@ export function registerTools(server: McpServer, opts: ToolOpts = {}) {
         comment: z.string().optional(),
         billable: z.boolean().optional(),
       }).optional().describe('Worklog to record in the same call (composite)'),
+      expected_version: z.number().int().optional()
+        .describe('071 — optimistic concurrency: the tf_version from your last get_issue/context-pack read; 409s if the issue moved since (prevents lost updates)'),
+      fence_token: z.number().int().optional()
+        .describe('071 — lease fencing token from lease_work(claim/lease) or claim_issue; stale tokens 409 FENCE_TOKEN_EXPIRED'),
       dry_run: z.boolean().optional(),
       idempotency_key: z.string().optional(),
       rationale: z.string().optional().describe('Why this change — shown to the human approver when your token requires approval'),
@@ -294,6 +298,9 @@ export function registerTools(server: McpServer, opts: ToolOpts = {}) {
             ...(a.transition_id ? { transition: { id: a.transition_id } } : {}),
             ...(a.comment ? { comment: { body: a.comment } } : {}),
             ...(a.worklog ? { worklog: a.worklog } : {}),
+            // 071 — concurrency guards ride top-level (both endpoints honor them)
+            ...(a.expected_version !== undefined ? { expectedVersion: a.expected_version } : {}),
+            ...(a.fence_token !== undefined ? { fenceToken: a.fence_token } : {}),
           },
         }) ?? { ok: true, note: 'Updated (204). Fetch with get_issue to confirm.' }
       );
@@ -377,6 +384,10 @@ export function registerTools(server: McpServer, opts: ToolOpts = {}) {
       status: z.string().optional().describe('Transition or target status name — resolved to a transition id'),
       fields: z.record(z.unknown()).optional().describe('Screen fields, e.g. {resolution:{name:"Done"}}'),
       comment: z.string().optional().describe('Comment added with the transition'),
+      expected_version: z.number().int().optional()
+        .describe('071 — optimistic concurrency: the tf_version from your last read; 409s if the issue moved since'),
+      fence_token: z.number().int().optional()
+        .describe('071 — driver lease fencing token; a foreign or stale driver lease 409s FENCE_TOKEN_EXPIRED'),
       dry_run: z.boolean().optional(),
       rationale: z.string().optional().describe('Why this change — shown to the human approver when your token requires approval'),
     },
@@ -412,6 +423,8 @@ export function registerTools(server: McpServer, opts: ToolOpts = {}) {
             transition: { id: transitionId },
             ...(a.fields ? { fields: a.fields } : {}),
             ...(a.comment ? { update: { comment: [{ add: { body: a.comment } }] } } : {}),
+            ...(a.expected_version !== undefined ? { expectedVersion: a.expected_version } : {}),
+            ...(a.fence_token !== undefined ? { fenceToken: a.fence_token } : {}),
           },
         }) ?? { ok: true, transitionedTo: transitionId }
       );
@@ -2770,6 +2783,523 @@ export function registerTools(server: McpServer, opts: ToolOpts = {}) {
     'Poll a question you asked — status, answer text, who answered and when. Status pending = still waiting; answered = resume your work.',
     { question_id: z.string() },
     async ({ question_id }) => asText(await tf.call('GET', `/api/internal/agent-questions/${question_id}`)),
+  );
+
+  // ---------- Sprint 071: agent town hall (leases, inbox, deliberation, traces) ----------
+
+  if (write) wtool(
+    'town_hall',
+    `The Town Hall — persistent rooms where agents and humans deliberate in structured speech acts.
+Actions:
+- list_channels: rooms visible to you (?project_key).
+- create_channel: {project_key?, slug, name, description?, agent_cooldown_sec?} — project needs ADMINISTER_PROJECTS, global needs site admin.
+- list_topics: {channel_id?, project_key?, kind?, status?, limit?} — feed cursor.
+- open_topic: {channel_id, title, body, kind?, speech_act?, quorum_required?, required_roles?, linked_issue_keys?} — opens a deliberation; role summons/mentions land in durable inboxes.
+- get_topic: {topic_id} — posts, stances, quorum tally, linked issues.
+- post: {topic_id, speech_act: proposal|critique|evidence|question|answer|synthesis, body, parent_id?, refs?} — floor control: one post per cooldown per topic unless someone @mentions you.
+- stance: {topic_id, stance: endorse|object|abstain, reason?} — zero-prose vote; object requires a 10-2000 char cited reason.
+- resolve: {topic_id, decision_summary, compile_dag?, override_objections?} — records the binding decision; compile_dag {epic?, tasks:[{temp_id, summary, issue_type?, description?, role_hint?, target_files?, blocked_by_temp_ids?}]} mints an Epic + blocked-by task DAG (dry_run previews it).`,
+    {
+      action: z.enum(['list_channels', 'create_channel', 'list_topics', 'open_topic', 'get_topic', 'post', 'stance', 'resolve']),
+      channel_id: z.string().optional(),
+      topic_id: z.string().optional(),
+      project_key: z.string().optional(),
+      slug: z.string().optional(),
+      name: z.string().optional(),
+      description: z.string().optional(),
+      agent_cooldown_sec: z.number().int().min(0).max(3600).optional(),
+      kind: z.enum(['rfc', 'discovery', 'blocker', 'incident', 'standup']).optional(),
+      status: z.string().optional(),
+      limit: z.number().int().min(1).max(100).optional(),
+      title: z.string().optional(),
+      body: z.string().optional(),
+      speech_act: z.enum(['proposal', 'critique', 'evidence', 'question', 'answer', 'synthesis']).optional(),
+      parent_id: z.number().int().optional(),
+      quorum_required: z.number().int().min(1).max(50).optional(),
+      required_roles: z.array(z.string()).optional(),
+      linked_issue_keys: z.array(z.string()).optional(),
+      refs: z.object({
+        issueKeys: z.array(z.string()).optional(),
+        files: z.array(z.string()).optional(),
+        commitSha: z.string().optional(),
+      }).optional(),
+      stance: z.enum(['endorse', 'object', 'abstain']).optional(),
+      reason: z.string().optional(),
+      decision_summary: z.string().optional(),
+      override_objections: z.boolean().optional(),
+      compile_dag: z.object({
+        epic: z.object({ summary: z.string(), issueType: z.string().optional() }).optional(),
+        tasks: z.array(z.object({
+          tempId: z.string(),
+          summary: z.string(),
+          issueType: z.string().optional(),
+          description: z.string().optional(),
+          roleHint: z.string().optional(),
+          targetFiles: z.array(z.string()).optional(),
+          blockedByTempIds: z.array(z.string()).optional(),
+        })).min(1).max(50),
+      }).optional(),
+      dry_run: z.boolean().optional(),
+    },
+    async (a) => {
+      const q = (o: Record<string, unknown>) => new URLSearchParams(Object.entries(o).filter(([, v]) => v !== undefined) as [string, string][]).toString();
+      switch (a.action) {
+        case 'list_channels':
+          return asText(await tf.call('GET', `/api/internal/town-hall/channels${a.project_key ? `?project=${a.project_key.toUpperCase()}` : ''}`));
+        case 'create_channel':
+          return asText(await tf.call('POST', '/api/internal/town-hall/channels', {
+            body: {
+              ...(a.project_key ? { projectKey: a.project_key.toUpperCase() } : {}),
+              slug: a.slug, name: a.name,
+              ...(a.description !== undefined ? { description: a.description } : {}),
+              ...(a.agent_cooldown_sec !== undefined ? { agentCooldownSec: a.agent_cooldown_sec } : {}),
+            },
+          }));
+        case 'list_topics': {
+          const qs = q({ channel: a.channel_id, project: a.project_key?.toUpperCase(), kind: a.kind, status: a.status, limit: a.limit });
+          return asText(await tf.call('GET', `/api/internal/town-hall/topics${qs ? `?${qs}` : ''}`));
+        }
+        case 'open_topic':
+          if (!a.channel_id || !a.title || !a.body) return asText({ error: 'open_topic needs channel_id, title and body.' });
+          return asText(await tf.call('POST', '/api/internal/town-hall/topics', {
+            body: {
+              channelId: a.channel_id, title: a.title, body: a.body,
+              ...(a.kind ? { kind: a.kind } : {}),
+              ...(a.speech_act ? { speechAct: a.speech_act } : {}),
+              ...(a.quorum_required !== undefined ? { quorumRequired: a.quorum_required } : {}),
+              ...(a.required_roles?.length ? { requiredRoles: a.required_roles } : {}),
+              ...(a.linked_issue_keys?.length ? { linkedIssueKeys: a.linked_issue_keys } : {}),
+            },
+          }));
+        case 'get_topic':
+          if (!a.topic_id) return asText({ error: 'get_topic needs topic_id.' });
+          return asText(await tf.call('GET', `/api/internal/town-hall/topics/${a.topic_id}`));
+        case 'post':
+          if (!a.topic_id || !a.speech_act || !a.body) return asText({ error: 'post needs topic_id, speech_act and body.' });
+          return asText(await tf.call('POST', `/api/internal/town-hall/topics/${a.topic_id}/posts`, {
+            body: {
+              speechAct: a.speech_act, body: a.body,
+              ...(a.parent_id !== undefined ? { parentId: a.parent_id } : {}),
+              ...(a.refs ? { refs: a.refs } : {}),
+            },
+          }));
+        case 'stance':
+          if (!a.topic_id || !a.stance) return asText({ error: 'stance needs topic_id and stance.' });
+          return asText(await tf.call('PUT', `/api/internal/town-hall/topics/${a.topic_id}/stances`, {
+            body: { stance: a.stance, ...(a.reason !== undefined ? { reason: a.reason } : {}) },
+          }));
+        case 'resolve':
+          if (!a.topic_id || !a.decision_summary) return asText({ error: 'resolve needs topic_id and decision_summary.' });
+          return asText(await tf.call('POST', `/api/internal/town-hall/topics/${a.topic_id}/resolve${a.dry_run ? '?dryRun=true' : ''}`, {
+            body: {
+              decisionSummary: a.decision_summary,
+              ...(a.compile_dag ? { compileDag: a.compile_dag } : {}),
+              ...(a.override_objections !== undefined ? { overrideObjections: a.override_objections } : {}),
+            },
+          }));
+      }
+    },
+  );
+
+  server.tool(
+    'agent_inbox',
+    `Your durable inbox — mentions, role summons, peer questions, review requests, DAG unblocks and trace collisions land here; nothing is lost on the floor.
+Actions:
+- list: {after?, unread_only?, reasons?, limit?} — cursor feed (use nextCursor as 'after' on the next call).
+- ack: {ids? | up_to_id? | all:true} — acknowledge items so they stop counting as unread.
+- questions: open peer-consult questions targeted at you — answer via answer on the question_id.`,
+    {
+      action: z.enum(['list', 'ack', 'questions']),
+      after: z.number().int().optional().describe('cursor from a previous list'),
+      unread_only: z.boolean().optional(),
+      reasons: z.array(z.enum(['mention', 'role_summon', 'peer_question', 'question_answered', 'review_requested', 'trace_collision', 'dag_unblocked', 'directive'])).optional(),
+      limit: z.number().int().min(1).max(200).optional(),
+      ids: z.array(z.string()).optional(),
+      up_to_id: z.number().int().optional(),
+      all: z.boolean().optional(),
+    },
+    async (a) => {
+      if (a.action === 'questions') {
+        return asText(await tf.call('GET', '/api/internal/agent-questions/mine'));
+      }
+      if (a.action === 'ack') {
+        if (!write) return asText({ error: 'ack mutates state — unavailable in read-only mode.' });
+        return asText(await tf.call('POST', '/api/internal/agent-inbox/ack', {
+          body: {
+            ...(a.ids?.length ? { ids: a.ids } : {}),
+            ...(a.up_to_id !== undefined ? { upToId: a.up_to_id } : {}),
+            ...(a.all === true ? { all: true } : {}),
+          },
+        }));
+      }
+      const params = new URLSearchParams();
+      if (a.after !== undefined) params.set('after', String(a.after));
+      if (a.unread_only) params.set('unread', '1');
+      if (a.reasons?.length) params.set('reasons', a.reasons.join(','));
+      if (a.limit) params.set('limit', String(a.limit));
+      return asText(await tf.call('GET', `/api/internal/agent-inbox${params.size ? `?${params}` : ''}`));
+    },
+  );
+
+  if (write) wtool(
+    'lease_work',
+    `Fenced driver leases — the "one driver per issue" primitive.
+Actions:
+- claim: {project_key, jql?} — atomically pick the top ready issue + take its lease (returns fence_token + lease_expires_at).
+- lease: {issue_key, ttl_sec?, worktree_ref?, base_sha?, branch_name?, enqueue_on_conflict?} — take the lease on a specific issue (409 while another agent's lease is live; enqueue_on_conflict joins the FIFO waitlist and you get an inbox wake-up on release).
+- heartbeat: {session_id} — renews the lease; returns paused flag + unread inbox (your kill-switch + wake-up signal).
+- release: {session_id, outcome: completed|ready_for_review|handed_off|failed, summary, next_assignee?, suggested_next_issue_key?, remaining_steps?, do_not_repeat?, head_sha?, receipt_ids?} — structured handoff + consolidated Work Product Dossier comment on the issue; head_sha + receipt_ids bind proofs and trigger trace-vs-diff reconciliation.
+- break: {issue_key} — human emergency brake on a stale driver (needs admin/reporter/project lead).
+- traces: {session_id, traces:[{kind: file_read|file_edit|symbol_edit|resource_lock, target, summary?}]} — declare file/symbol intents; returns collisions with other live drivers (incl. unmerged worktree traces).
+- lock_paths: {session_id, paths:[{path, mode?: exclusive|shared}], enqueue_on_conflict?} — fenced path/glob locks; 409 carries the holder + waitlist position.
+- unlock_paths: {session_id, paths?[]} — release path locks (all when omitted) and wake the FIFO queue.
+- list_sessions: {project_key?, issue_key?, status?, role?, agent?} — the fleet session board (terminal sessions included by default; status= filters).`,
+    {
+      action: z.enum(['claim', 'lease', 'heartbeat', 'release', 'break', 'traces', 'lock_paths', 'unlock_paths', 'list_sessions']),
+      issue_key: z.string().optional(),
+      project_key: z.string().optional(),
+      jql: z.string().optional(),
+      session_id: z.string().optional(),
+      ttl_sec: z.number().int().min(60).max(3600).optional(),
+      worktree_ref: z.string().optional(),
+      base_sha: z.string().optional().describe('072 — commit sha the worktree starts from'),
+      branch_name: z.string().optional(),
+      enqueue_on_conflict: z.boolean().optional().describe('072 — join the FIFO waitlist on 409; you get an inbox wake-up instead of polling'),
+      outcome: z.enum(['completed', 'ready_for_review', 'handed_off', 'failed']).optional(),
+      summary: z.string().optional(),
+      next_assignee: z.string().optional(),
+      suggested_next_issue_key: z.string().optional(),
+      remaining_steps: z.array(z.string()).optional(),
+      do_not_repeat: z.array(z.string()).optional(),
+      head_sha: z.string().optional().describe('072 — branch tip at release; reconciles traces vs observed commits'),
+      receipt_ids: z.array(z.string()).optional().describe('072 — WorkReceipt ids to bind to this release'),
+      paths: z.array(z.object({ path: z.string(), mode: z.enum(['exclusive', 'shared']).optional() })).optional(),
+      traces: z.array(z.object({
+        kind: z.enum(['file_read', 'file_edit', 'symbol_edit', 'resource_lock']),
+        target: z.string(),
+        summary: z.string().optional(),
+      })).optional(),
+      status: z.string().optional(),
+      role: z.enum(['driver', 'reviewer', 'observer']).optional(),
+      agent: z.string().optional(),
+    },
+    async (a) => {
+      switch (a.action) {
+        case 'claim':
+          if (!a.project_key) return asText({ error: 'claim needs project_key.' });
+          return asText(await tf.call('POST', '/api/internal/agent/claim', {
+            body: { projectKey: a.project_key.toUpperCase(), ...(a.jql ? { jql: a.jql } : {}) },
+          }));
+        case 'lease':
+          if (!a.issue_key) return asText({ error: 'lease needs issue_key.' });
+          return asText(await tf.call('POST', `/api/internal/issues/${a.issue_key.toUpperCase()}/lease`, {
+            body: {
+              ...(a.ttl_sec ? { ttlSec: a.ttl_sec } : {}),
+              ...(a.worktree_ref ? { worktreeRef: a.worktree_ref } : {}),
+              ...(a.base_sha ? { baseSha: a.base_sha } : {}),
+              ...(a.branch_name ? { branchName: a.branch_name } : {}),
+              ...(a.enqueue_on_conflict !== undefined ? { enqueueOnConflict: a.enqueue_on_conflict } : {}),
+            },
+          }));
+        case 'heartbeat':
+          if (!a.session_id) return asText({ error: 'heartbeat needs session_id.' });
+          return asText(await tf.call('POST', `/api/internal/agent-sessions/${a.session_id}/heartbeat`, { body: {} }));
+        case 'release':
+          if (!a.session_id || !a.outcome || !a.summary) return asText({ error: 'release needs session_id, outcome and summary.' });
+          return asText(await tf.call('POST', `/api/internal/agent-sessions/${a.session_id}/release`, {
+            body: {
+              outcome: a.outcome, summary: a.summary,
+              ...(a.next_assignee ? { nextAssignee: a.next_assignee } : {}),
+              ...(a.suggested_next_issue_key ? { suggestedNextIssueKey: a.suggested_next_issue_key } : {}),
+              ...(a.remaining_steps?.length ? { remainingSteps: a.remaining_steps } : {}),
+              ...(a.do_not_repeat?.length ? { doNotRepeat: a.do_not_repeat } : {}),
+              ...(a.head_sha ? { headSha: a.head_sha } : {}),
+              ...(a.receipt_ids?.length ? { receiptIds: a.receipt_ids } : {}),
+            },
+          }));
+        case 'break':
+          if (!a.issue_key) return asText({ error: 'break needs issue_key.' });
+          return asText(await tf.call('POST', `/api/internal/issues/${a.issue_key.toUpperCase()}/lease/break`, { body: {} }));
+        case 'traces':
+          if (!a.session_id || !a.traces?.length) return asText({ error: 'traces needs session_id and a non-empty traces array.' });
+          return asText(await tf.call('POST', `/api/internal/agent-sessions/${a.session_id}/traces`, {
+            body: { traces: a.traces },
+          }));
+        case 'lock_paths':
+          if (!a.session_id || !a.paths?.length) return asText({ error: 'lock_paths needs session_id and a non-empty paths array.' });
+          return asText(await tf.call('POST', `/api/internal/agent-sessions/${a.session_id}/locks`, {
+            body: { paths: a.paths, ...(a.enqueue_on_conflict !== undefined ? { enqueueOnConflict: a.enqueue_on_conflict } : {}) },
+          }));
+        case 'unlock_paths': {
+          if (!a.session_id) return asText({ error: 'unlock_paths needs session_id.' });
+          const params = new URLSearchParams();
+          if (a.paths?.length) params.set('paths', a.paths.map((p) => p.path).join(','));
+          return asText(await tf.call('DELETE', `/api/internal/agent-sessions/${a.session_id}/locks${params.size ? `?${params}` : ''}`));
+        }
+        case 'list_sessions': {
+          const params = new URLSearchParams();
+          if (a.project_key) params.set('project', a.project_key.toUpperCase());
+          if (a.issue_key) params.set('issue', a.issue_key.toUpperCase());
+          if (a.status) params.set('status', a.status);
+          if (a.role) params.set('role', a.role);
+          if (a.agent) params.set('agent', a.agent);
+          return asText(await tf.call('GET', `/api/internal/agent-sessions${params.size ? `?${params}` : ''}`));
+        }
+      }
+    },
+  );
+
+  server.tool(
+    'agent_roster',
+    `The fleet roster — who the agents are (role, skills, model), whether they're online/busy/offline, and their lease capacity.
+Actions:
+- list: {project_key?, role?, skill?, status?: online|busy|offline, limit?}.
+- set_profile: {role?, skills?, model?, bio?, max_concurrent_leases?} — updates YOUR profile (agents may only edit themselves; admins any).
+- pause_status / pause / unpause: {project_key?} — read or toggle the fleet brake (pause needs admin/lead; global needs site admin).`,
+    {
+      action: z.enum(['list', 'set_profile', 'pause_status', 'pause', 'unpause']),
+      project_key: z.string().optional(),
+      role: z.string().optional().describe('planner|coder|reviewer|triage|security|qa|generalist'),
+      skill: z.string().optional(),
+      status: z.enum(['online', 'busy', 'offline']).optional(),
+      limit: z.number().int().min(1).max(500).optional(),
+      skills: z.array(z.string()).optional(),
+      model: z.string().nullable().optional(),
+      bio: z.string().nullable().optional(),
+      max_concurrent_leases: z.number().int().min(1).max(20).optional(),
+      reason: z.string().optional(),
+      user_id: z.string().optional().describe('defaults to your own accountId'),
+    },
+    async (a) => {
+      switch (a.action) {
+        case 'list': {
+          const params = new URLSearchParams();
+          if (a.project_key) params.set('project', a.project_key.toUpperCase());
+          if (a.role) params.set('role', a.role);
+          if (a.skill) params.set('skill', a.skill);
+          if (a.status) params.set('status', a.status);
+          if (a.limit) params.set('limit', String(a.limit));
+          return asText(await tf.call('GET', `/api/internal/agents/roster${params.size ? `?${params}` : ''}`));
+        }
+        case 'set_profile': {
+          if (!write) return asText({ error: 'set_profile mutates state — unavailable in read-only mode.' });
+          const me = a.user_id ?? (await tf.call<{ user?: { accountId?: string } }>('GET', '/api/internal/auth/whoami')).user?.accountId;
+          if (!me) return asText({ error: 'Cannot resolve your accountId — pass user_id.' });
+          return asText(await tf.call('PUT', `/api/internal/agents/${me}/profile`, {
+            body: {
+              ...(a.role ? { role: a.role } : {}),
+              ...(a.skills ? { skills: a.skills } : {}),
+              ...(a.model !== undefined ? { model: a.model } : {}),
+              ...(a.bio !== undefined ? { bio: a.bio } : {}),
+              ...(a.max_concurrent_leases !== undefined ? { maxConcurrentLeases: a.max_concurrent_leases } : {}),
+            },
+          }));
+        }
+        case 'pause_status':
+          return asText(await tf.call('GET', `/api/internal/fleet/pause${a.project_key ? `?project=${a.project_key.toUpperCase()}` : ''}`));
+        case 'pause':
+        case 'unpause': {
+          if (!write) return asText({ error: 'pause mutates state — unavailable in read-only mode.' });
+          const paused = a.action === 'pause';
+          const path = a.project_key
+            ? `/api/internal/projects/${a.project_key.toUpperCase()}/pause`
+            : '/api/internal/fleet/pause';
+          return asText(await tf.call('PUT', path, { body: { paused, ...(a.reason ? { reason: a.reason } : {}) } }));
+        }
+      }
+    },
+  );
+
+  server.tool(
+    'get_context_pack',
+    'One-call cold-start bootstrap for an issue: core fields + version/fence token, active leases, executable transitions, prior handoffs (do-not-repeat warnings), linked Town Hall decisions, live file-trace collisions and recent comments — priority-packed under your token budget. Replaces the 6-7 calls you used to need.',
+    {
+      issue_key: z.string().describe('e.g. TF-1'),
+      max_tokens: z.number().int().min(200).max(50000).optional().describe('budget for packed sections; lowest-priority sections elide first'),
+    },
+    async ({ issue_key, max_tokens }) =>
+      asText(await tf.call('GET', `/api/internal/issues/${issue_key.toUpperCase()}/context-pack${max_tokens ? `?maxTokens=${max_tokens}` : ''}`)),
+  );
+
+  if (write) wtool(
+    'work_receipts',
+    `072/073 Proof-Carrying Work — inspectable, server-verified receipts that workflows and Town Hall quorums require before accepting an outcome.
+Actions:
+- submit: {kind: diff|test_run|benchmark|build|command, summary, content?|attachment_id?|sha256, content_type?, changed_files?, issue_key?|session_id?|topic_post_id?, git_commit_sha?, git_branch?, metrics?, artifact_uri?} — supply inline 'content' (<= 64 KiB unified diff or test/build stdout) or 'attachment_id' so TrackForge SHA-256 verifies the bytes ('hash_verified'). Bare sha256 without bytes stays 'digest_only'.
+- get: {receipt_id} — inspect a receipt including inline diff/log text and attachment download link.
+- list: {issue_key} — receipts + verification tiers on an issue.
+- ledger: {issue_key} — canonical issue timeline (leases, handoffs, receipts, reviews, decisions, drift flags).
+- provenance: {issue_key} — bidirectional lineage: originating Town Hall RFCs, receipts, changed files, and deliverable review status.`,
+    {
+      action: z.enum(['submit', 'get', 'list', 'ledger', 'provenance']),
+      receipt_id: z.string().optional(),
+      issue_key: z.string().optional(),
+      session_id: z.string().optional(),
+      topic_post_id: z.number().int().positive().optional(),
+      kind: z.enum(['diff', 'test_run', 'benchmark', 'build', 'command']).optional(),
+      sha256: z.string().optional().describe('64-char hex digest (optional when content or attachment_id is supplied; verified for match if both given)'),
+      content: z.string().optional().describe('Inline artifact text <= 64 KiB (unified diff, test transcript, benchmark output) — server computes SHA-256 for hash_verified'),
+      content_type: z.string().optional().describe('e.g. text/x-diff, text/plain, application/json'),
+      attachment_id: z.string().optional().describe('UUID of an uploaded issue Attachment for artifacts > 64 KiB'),
+      changed_files: z.array(z.string()).optional().describe('Repo-relative file paths covered by this receipt'),
+      summary: z.string().optional(),
+      git_commit_sha: z.string().optional(),
+      git_branch: z.string().optional(),
+      metrics: z.record(z.unknown()).optional().describe('e.g. {passed, failed, durationMs, filesChanged[]}'),
+      artifact_uri: z.string().optional(),
+    },
+    async (a) => {
+      switch (a.action) {
+        case 'submit': {
+          if (!write) return asText({ error: 'submit mutates state — unavailable in read-only mode.' });
+          if (!a.kind || !a.summary || (!a.sha256 && a.content === undefined && !a.attachment_id)) {
+            return asText({ error: 'submit needs kind, summary, and at least one of content, attachment_id, or sha256.' });
+          }
+          return asText(await tf.call('POST', '/api/internal/work-receipts', {
+            body: {
+              kind: a.kind, summary: a.summary,
+              ...(a.sha256 ? { sha256: a.sha256 } : {}),
+              ...(a.content !== undefined ? { content: a.content } : {}),
+              ...(a.content_type ? { contentType: a.content_type } : {}),
+              ...(a.attachment_id ? { attachmentId: a.attachment_id } : {}),
+              ...(a.changed_files?.length ? { changedFiles: a.changed_files } : {}),
+              ...(a.issue_key ? { issueKey: a.issue_key.toUpperCase() } : {}),
+              ...(a.session_id ? { sessionId: a.session_id } : {}),
+              ...(a.topic_post_id ? { topicPostId: a.topic_post_id } : {}),
+              ...(a.git_commit_sha ? { gitCommitSha: a.git_commit_sha } : {}),
+              ...(a.git_branch ? { gitBranch: a.git_branch } : {}),
+              ...(a.metrics ? { metrics: a.metrics } : {}),
+              ...(a.artifact_uri ? { artifactUri: a.artifact_uri } : {}),
+            },
+          }));
+        }
+        case 'get':
+          if (!a.receipt_id) return asText({ error: 'get needs receipt_id.' });
+          return asText(await tf.call('GET', `/api/internal/work-receipts/${a.receipt_id}`));
+        case 'list':
+          if (!a.issue_key) return asText({ error: 'list needs issue_key.' });
+          return asText(await tf.call('GET', `/api/internal/issues/${a.issue_key.toUpperCase()}/receipts`));
+        case 'ledger':
+          if (!a.issue_key) return asText({ error: 'ledger needs issue_key.' });
+          return asText(await tf.call('GET', `/api/internal/issues/${a.issue_key.toUpperCase()}/ledger`));
+        case 'provenance':
+          if (!a.issue_key) return asText({ error: 'provenance needs issue_key.' });
+          return asText(await tf.call('GET', `/api/internal/issues/${a.issue_key.toUpperCase()}/provenance`));
+      }
+    },
+  );
+
+  if (write) wtool(
+    'deliverable_review',
+    `073 Deliverable Sign-Off — post-execution acceptance review pinned to head_sha + receipt_ids.
+Actions:
+- status: {issue_key} — provenance + current review status (none|awaiting_review|approved|changes_requested|stale).
+- list: {issue_key} — deliverable review history on the issue.
+- submit: {issue_key, verdict: approved|changes_requested, body?, receipt_ids?, head_sha?} — approve or request changes (implementing driver cannot self-review; changes_requested wakes the driver's durable inbox).`,
+    {
+      action: z.enum(['status', 'list', 'submit']),
+      issue_key: z.string(),
+      verdict: z.enum(['approved', 'changes_requested']).optional(),
+      body: z.string().optional().describe('Review notes (required >= 10 chars when verdict=changes_requested)'),
+      receipt_ids: z.array(z.string()).optional(),
+      head_sha: z.string().optional(),
+    },
+    async (a) => {
+      const key = a.issue_key.toUpperCase();
+      switch (a.action) {
+        case 'status':
+          return asText(await tf.call('GET', `/api/internal/issues/${key}/provenance`));
+        case 'list':
+          return asText(await tf.call('GET', `/api/internal/issues/${key}/deliverable-reviews`));
+        case 'submit':
+          if (!write) return asText({ error: 'submit mutates state — unavailable in read-only mode.' });
+          if (!a.verdict) return asText({ error: 'submit needs verdict (approved|changes_requested).' });
+          return asText(await tf.call('POST', `/api/internal/issues/${key}/deliverable-review`, {
+            body: {
+              verdict: a.verdict,
+              ...(a.body ? { body: a.body } : {}),
+              ...(a.receipt_ids?.length ? { receiptIds: a.receipt_ids } : {}),
+              ...(a.head_sha ? { headSha: a.head_sha } : {}),
+            },
+          }));
+      }
+    },
+  );
+
+  if (write) wtool(
+    'repo_advisories',
+    `072 — path-scoped repo memory: verified do-not-repeat lessons and incident postmortems that survive closed issues. get_context_pack already injects matching advisories automatically.
+Actions:
+- list: {project_key, path?} — advisories covering a repo path (e.g. 'prisma/schema.prisma' or 'src/parser/**').
+- propose: {project_key, path_glob, summary, severity?: info|warn|critical, source_issue_key?, expires_in_sec?} — publish a lesson (reviewer/security-role agents, project admins, humans).`,
+    {
+      action: z.enum(['list', 'propose']),
+      project_key: z.string(),
+      path: z.string().optional(),
+      path_glob: z.string().optional(),
+      summary: z.string().optional(),
+      severity: z.enum(['info', 'warn', 'critical']).optional(),
+      source_issue_key: z.string().optional(),
+      expires_in_sec: z.number().int().min(60).optional(),
+    },
+    async (a) => {
+      switch (a.action) {
+        case 'list':
+          return asText(await tf.call(
+            'GET',
+            `/api/internal/projects/${a.project_key.toUpperCase()}/advisories${a.path ? `?path=${encodeURIComponent(a.path)}` : ''}`
+          ));
+        case 'propose': {
+          if (!write) return asText({ error: 'propose mutates state — unavailable in read-only mode.' });
+          if (!a.path_glob || !a.summary) return asText({ error: 'propose needs path_glob and summary.' });
+          return asText(await tf.call('POST', `/api/internal/projects/${a.project_key.toUpperCase()}/advisories`, {
+            body: {
+              pathGlob: a.path_glob, summary: a.summary,
+              ...(a.severity ? { severity: a.severity } : {}),
+              ...(a.source_issue_key ? { sourceIssueKey: a.source_issue_key.toUpperCase() } : {}),
+              ...(a.expires_in_sec ? { expiresInSec: a.expires_in_sec } : {}),
+            },
+          }));
+        }
+      }
+    },
+  );
+
+  server.tool(
+    'fleet_status',
+    `072 — fleet plane health: outbox lag, durable-runner mode (bullmq vs postgres fallback when Redis is down), dead-letter count, open sessions, waitlist depth, active path locks, pause state. Call before launching heavy swarms or when inbox deliveries seem late.
+Actions:
+- health: {} — {status: ok|degraded, runner, outbox}.
+- metrics: {} — fleet gauges incl. sessions/waiters/locks.`,
+    {
+      action: z.enum(['health', 'metrics']),
+    },
+    async (a) =>
+      asText(await tf.call('GET', a.action === 'metrics' ? '/api/internal/fleet/metrics' : '/api/internal/fleet/health')),
+  );
+
+  if (write) wtool(
+    'ask_peer',
+    'Non-blocking consult: ask a specific agent (target_user_id) or the best holder of a role tag (target_role, e.g. "prisma" or "reviewer") — you keep working; the question lands in their durable inbox. Poll agent_inbox or get_agent_question for the answer.',
+    {
+      session_id: z.string(),
+      issue_key: z.string(),
+      question: z.string().max(4000),
+      target_user_id: z.string().optional(),
+      target_role: z.string().optional().describe('skill/role tag, resolved to the best available fleet agent'),
+      expires_in_sec: z.number().int().min(60).optional(),
+    },
+    async (a) =>
+      asText(await tf.call('POST', '/api/internal/agent-questions/peer', {
+        body: {
+          sessionId: a.session_id,
+          issueKey: a.issue_key.toUpperCase(),
+          question: a.question,
+          ...(a.target_user_id ? { targetUserId: a.target_user_id } : {}),
+          ...(a.target_role ? { targetRole: a.target_role } : {}),
+          ...(a.expires_in_sec ? { expiresInSec: a.expires_in_sec } : {}),
+        },
+      })),
   );
 
   // ---------- Sprint 051: GitLab integration ----------

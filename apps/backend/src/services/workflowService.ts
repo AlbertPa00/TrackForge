@@ -173,9 +173,12 @@ interface TransitionBody {
   update?: {
     comment?: { add?: { body?: string } }[];
   };
+  /** 071 — optimistic concurrency + lease fencing (mirrors updateIssue). */
+  expectedVersion?: number;
+  fenceToken?: number | null;
 }
 
-async function runValidators(t: TransitionFull, issue: IssueCtx, body: TransitionBody) {
+async function runValidators(t: TransitionFull, issue: IssueCtx, body: TransitionBody, actor: Actor) {
   for (const r of t.rules.filter((x) => x.kind === 'validator')) {
     if (r.type === 'resolutionRequired') {
       const provided = body.fields?.resolution && (body.fields.resolution.name || body.fields.resolution.id);
@@ -187,6 +190,79 @@ async function runValidators(t: TransitionFull, issue: IssueCtx, body: Transitio
       const v = (body.fields as Record<string, unknown> | undefined)?.[field];
       if (v === undefined || v === null || v === '') {
         throw new JiraApiError(400, jiraError([], { [field]: `${field} is required.` }));
+      }
+    } else if (r.type === 'separationOfDuties') {
+      // 071 US5 — the driver may not self-approve a protected transition:
+      // a human always passes; an agent must not be the issue's open driver,
+      // and when config.requiredRole is set must hold an open session with
+      // that role (typically 'reviewer') on the issue.
+      if (actor.user.type === 'agent') {
+        const sessions = await prisma.agentSession.findMany({
+          where: { issueId: issue.id, status: { in: ['running', 'blocked', 'needs-answer'] } },
+          select: { agentUserId: true, role: true },
+        });
+        const cfg = r.config as { requiredRole?: string } | null;
+        if (sessions.some((s) => s.agentUserId === actor.user.id && s.role === 'driver')) {
+          throw new JiraApiError(
+            400,
+            jiraError([], { transition: `Separation of duties: the driver may not execute '${t.name}'.` })
+          );
+        }
+        if (cfg?.requiredRole && !sessions.some((s) => s.agentUserId === actor.user.id && s.role === cfg.requiredRole)) {
+          throw new JiraApiError(
+            400,
+            jiraError([], { transition: `Transition '${t.name}' requires an open '${cfg.requiredRole}' session on this issue.` })
+          );
+        }
+      }
+    } else if (r.type === 'verifiedReceiptRequired') {
+      // 072 FR-006 — Proof-Carrying Work: the transition refuses prose-only
+      // completions. config: { kinds?: string[], minTier?: string }.
+      const cfg = (r.config as { kinds?: string[]; minTier?: string } | null) ?? {};
+      const { issueReceiptGate } = await import('./receiptService.js');
+      const gate = await issueReceiptGate(issue.id, cfg.kinds ?? ['diff', 'test_run'], cfg.minTier ?? 'hash_verified');
+      if (!gate.ok) {
+        throw new JiraApiError(422, jiraError([], { receipts: `Transition '${t.name}': ${gate.missing}` }));
+      }
+    } else if (r.type === 'traceDiffClean') {
+      // 072 FR-006/FR-007 — block when the last driver session's trace-vs-diff
+      // reconciliation shows phantom or undeclared work. config: { allowUndeclared?: boolean }.
+      const last = await prisma.agentSession.findFirst({
+        where: { issueId: issue.id, role: 'driver' },
+        orderBy: { startedAt: 'desc' },
+        select: { driftStatus: true },
+      });
+      const allowUndeclared = (r.config as { allowUndeclared?: boolean } | null)?.allowUndeclared === true;
+      if (last && (last.driftStatus === 'phantom_handoff' || (last.driftStatus === 'undeclared_edits' && !allowUndeclared))) {
+        throw new JiraApiError(
+          422,
+          jiraError([], {
+            drift: `Transition '${t.name}': last driver session reconciled as '${last.driftStatus}' — attach matching traces or a diff receipt covering the observed files.`,
+          })
+        );
+      }
+    } else if (r.type === 'deliverableApproved') {
+      // 073 FR-004 — SHA/receipt-pinned deliverable sign-off gate.
+      const cfg = (r.config as { requireHuman?: boolean; minReceiptTier?: string } | null) ?? {};
+      const { checkDeliverableApprovedGate } = await import('./deliverableService.js');
+      const gate = await checkDeliverableApprovedGate(issue.id, cfg);
+      if (!gate.ok) {
+        throw new JiraApiError(422, jiraError([], { deliverableReview: `Transition '${t.name}': ${gate.missing}` }));
+      }
+    } else if (r.type === 'townHallDecision') {
+      // 071 US6 — a 'blocks'-linked topic must reach a decision before the
+      // issue may move past this transition (decision-gated workflow).
+      const open = await prisma.townHallTopicIssue.findMany({
+        where: { issueId: issue.id, relation: 'blocks', topic: { status: { in: ['open', 'voting'] } } },
+        include: { topic: { select: { title: true } } },
+      });
+      if (open.length) {
+        throw new JiraApiError(
+          400,
+          jiraError([], {
+            transition: `Blocked by unresolved Town Hall topic(s): ${open.map((o) => o.topic.title).join(', ')}.`,
+          })
+        );
       }
     }
   }
@@ -236,12 +312,23 @@ export async function performTransition(
       await requirePermission(actor, 'RESOLVE_ISSUES', { projectId: issue.projectId, issue });
     }
   }
+  // 071 — optimistic version + lease fence on the status path too (agents can
+  // still comment cross-lease; they just can't move the board).
+  const issueVersion = (issue as { version?: number }).version ?? 1;
+  if (body.expectedVersion !== undefined && body.expectedVersion !== issueVersion) {
+    throw new JiraApiError(
+      409,
+      jiraError([], { version: `Stale version — issue is at ${issueVersion}; re-read and retry.`, currentVersion: String(issueVersion) })
+    );
+  }
+  const { assertFence } = await import('./agentSessionService.js');
+  await assertFence(actor, issue.id, body.fenceToken);
   for (const r of t.rules.filter((x) => x.kind === 'condition')) {
     if (!(await conditionPasses(r, issue, actor, project?.leadId))) {
       throw new JiraApiError(400, jiraError([`You do not have permission to execute the '${t.name}' transition.`]));
     }
   }
-  await runValidators(t, issue, body);
+  await runValidators(t, issue, body, actor);
 
   // Field updates from the transition screen.
   const items: Parameters<typeof recordChange>[3] = [];
@@ -335,8 +422,8 @@ export async function performTransition(
 
   const updated = await prisma.$transaction(async (tx) => {
     const u = await tx.issue.update({
-      where: { id: issue.id },
-      data,
+      where: { id: issue.id, ...(body.expectedVersion !== undefined ? { version: body.expectedVersion } : {}) },
+      data: { ...data, version: { increment: 1 } },
       include: issueInclude,
     });
     const commentRow = commentBody
@@ -381,6 +468,40 @@ export async function performTransition(
     }
     return u;
   });
+  // 071 — DAG unblock: landing on done wakes the drivers of issues this one
+  // was blocking (best-effort, post-commit — the event itself is the signal).
+  if (t.toStatus.category === 'done') {
+    try {
+      const links = await prisma.issueLink.findMany({
+        where: { outwardId: issue.id, type: { outward: { equals: 'blocks', mode: 'insensitive' } } },
+        include: { inwardIssue: { select: { id: true, issueNumber: true, resolutionId: true, project: { select: { key: true } } } } },
+      });
+      const drivers = await prisma.agentSession.findMany({
+        where: {
+          issueId: { in: links.filter((l) => !l.inwardIssue.resolutionId).map((l) => l.inwardIssue.id) },
+          role: 'driver',
+          status: { in: ['running', 'blocked', 'needs-answer'] },
+        },
+        select: { agentUserId: true, issue: { select: { id: true, issueNumber: true, project: { select: { key: true } } } } },
+      });
+      if (drivers.length) {
+        await emitEvent(prisma, actor, {
+          type: 'dag.unblocked',
+          projectId: issue.projectId,
+          payload: {
+            resolvedIssueKey: `${issue.project.key}-${issue.issueNumber}`,
+            inbox: drivers.map((d) => ({
+              userId: d.agentUserId,
+              reason: 'dag_unblocked',
+              actionHint: `${issue.project.key}-${issue.issueNumber} resolved — ${d.issue.project.key}-${d.issue.issueNumber} is unblocked.`,
+            })),
+          },
+        });
+      }
+    } catch (e) {
+      console.error('[dag_unblocked]', e);
+    }
+  }
   return updated;
 }
 

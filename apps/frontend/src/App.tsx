@@ -48,6 +48,7 @@ const TeamsPage = lazy(() => import('./pages/TeamsPage.js'));
 const FiltersPage = lazy(() => import('./pages/FiltersPage.js'));
 const WebhooksPage = lazy(() => import('./pages/WebhooksPage.js'));
 const ApprovalsPage = lazy(() => import('./pages/ApprovalsPage.js'));
+const TownHallPage = lazy(() => import('./pages/TownHallPage.js'));
 const AiSettingsPage = lazy(() => import('./pages/AiSettingsPage.js'));
 const CustomFieldsPage = lazy(() => import('./pages/CustomFieldsPage.js'));
 const DashboardsPage = lazy(() => import('./pages/DashboardsPage.js'));
@@ -197,6 +198,7 @@ function App() {
             </Route>
           </Route>
           <Route path="/approvals" element={<ApprovalsPage />} />
+          <Route path="/town-hall" element={<TownHallPage />} />
           <Route path="/profile" element={<ProfilePage />} />
           <Route path="/profile/:accountId" element={<UserProfilePage />} />
           <Route path="/connect" element={<ConnectPage />} />
@@ -214,6 +216,7 @@ function App() {
             <Route path="components" element={<ComponentsPage />} />
             <Route path="settings" element={<ProjectSettingsPage />} />
             <Route path="automation" element={<AutomationPage />} />
+            <Route path="town-hall" element={<TownHallPage />} />
           </Route>
           <Route path="/issues" element={<SearchPage />} />
           <Route path="/teams" element={<TeamsPage />} />

@@ -27,47 +27,130 @@ const PRUNE_INTERVAL_MS = 3_600_000;
 // 065 audit G9 — .env.example documents 90; the code defaulted to 30.
 const RETENTION_DAYS = Number(process.env.EVENT_RETENTION_DAYS ?? 90);
 
-/** One dispatch cycle — returns the number of events processed (testable). */
+const DLQ_MAX_ATTEMPTS = 5;
+
+type EventRow = {
+  id: bigint;
+  type: string;
+  occurredAt: Date;
+  actorId: string | null;
+  channel: string;
+  projectId: string | null;
+  issueId: string | null;
+  payload: unknown;
+  attempts: number;
+  lastError: string | null;
+};
+
+/** 072 — per-handler failure isolation with exponential backoff + dead-letter.
+ *  A handler that throws marks only itself for retry (successful sinks are not
+ *  re-run, so no duplicate notifications/webhooks); after DLQ_MAX_ATTEMPTS the
+ *  event is quarantined (`deadLetteredAt`) instead of stalling the queue. */
 export async function dispatchEvents(): Promise<number> {
-  const pending = await prisma.domainEvent.findMany({
-    where: { dispatchedAt: null },
+  const now = new Date();
+  const pending = (await prisma.domainEvent.findMany({
+    where: {
+      dispatchedAt: null,
+      deadLetteredAt: null,
+      OR: [{ nextAttemptAt: null }, { nextAttemptAt: { lte: now } }],
+    },
     orderBy: { id: 'asc' },
     take: 200,
-  });
+  })) as unknown as EventRow[];
   if (!pending.length) return 0;
-  // 070 — ack the whole batch in one write: a per-event UPDATE used to be
-  // 200 round-trips (and 200 WAL flushes) on top of the handler work.
   const dispatched: bigint[] = [];
+  const dead: bigint[] = [];
+  const retryUpdates: { id: bigint; attempts: number; lastError: string; nextAttemptAt: Date }[] = [];
+
   for (const ev of pending) {
-    try {
-      await matchWebhooks(ev);
-    } catch (e) {
-      console.error(`[dispatch] webhook match failed for event ${ev.id}:`, e);
+    const failedBefore = ev.lastError ? ev.lastError.split(',') : [];
+    const handlers: [string, () => Promise<void>][] = [
+      ['webhooks', () => matchWebhooks(ev as never)],
+      ['notifications', () => generateNotifications(ev as never)],
+      [
+        'agent_inbox',
+        async () => {
+          // 071 — agent inbox rows generate from the same payload envelope
+          // (payload.inbox), transactional with the cause by construction.
+          const { generateAgentInbox } = await import('./agentInboxService.js');
+          await generateAgentInbox(ev as never);
+        },
+      ],
+      ['emails', () => generateEmails(ev as never)],
+      ['automation', async () => { await evaluateEventForRules(ev as never); }],
+      ['sse', () => sseBroadcast(ev as never)],
+    ];
+    const failedNow: string[] = [];
+    for (const [name, run] of handlers) {
+      // On retry only re-run the sinks that previously failed.
+      if (ev.attempts > 0 && failedBefore.length && !failedBefore.includes(name)) continue;
+      try {
+        await run();
+      } catch (e) {
+        console.error(`[dispatch] ${name} failed for event ${ev.id}:`, e);
+        failedNow.push(name);
+      }
     }
-    try {
-      await generateNotifications(ev);
-    } catch (e) {
-      console.error(`[dispatch] notification generation failed for event ${ev.id}:`, e);
+    if (!failedNow.length) {
+      dispatched.push(ev.id);
+    } else {
+      const attempts = ev.attempts + 1;
+      if (attempts >= DLQ_MAX_ATTEMPTS) {
+        dead.push(ev.id);
+        console.error(`[dispatch] event ${ev.id} dead-lettered after ${attempts} attempts: ${failedNow.join(',')}`);
+      } else {
+        retryUpdates.push({
+          id: ev.id,
+          attempts,
+          lastError: failedNow.join(','),
+          nextAttemptAt: new Date(Date.now() + 1000 * 2 ** attempts),
+        });
+      }
     }
-    try {
-      await generateEmails(ev); // 029 — scheme → outbox (never blocks dispatch)
-    } catch (e) {
-      console.error(`[dispatch] email generation failed for event ${ev.id}:`, e);
-    }
-    try {
-      await evaluateEventForRules(ev); // 034 — automation rules (never blocks dispatch)
-    } catch (e) {
-      console.error(`[dispatch] automation eval failed for event ${ev.id}:`, e);
-    }
-    try {
-      await sseBroadcast(ev);
-    } catch {
-      /* SSE fan-out never blocks dispatch */
-    }
-    dispatched.push(ev.id);
   }
-  await prisma.domainEvent.updateMany({ where: { id: { in: dispatched } }, data: { dispatchedAt: new Date() } });
+  await prisma.$transaction([
+    prisma.domainEvent.updateMany({ where: { id: { in: dispatched } }, data: { dispatchedAt: new Date(), lastError: null } }),
+    ...(dead.length
+      ? [
+          prisma.domainEvent.updateMany({
+            where: { id: { in: dead } },
+            data: { deadLetteredAt: new Date(), dispatchedAt: new Date(), attempts: DLQ_MAX_ATTEMPTS },
+          }),
+        ]
+      : []),
+    ...retryUpdates.map((u) =>
+      prisma.domainEvent.update({
+        where: { id: u.id },
+        data: { attempts: u.attempts, lastError: u.lastError, nextAttemptAt: u.nextAttemptAt },
+      })
+    ),
+  ]);
   return pending.length;
+}
+
+/** 072 — outbox health for /fleet/health + /fleet/metrics. */
+export async function outboxHealth() {
+  const now = new Date();
+  const [undispatched, deadLettered, oldest, recentLag] = await Promise.all([
+    prisma.domainEvent.count({ where: { dispatchedAt: null, deadLetteredAt: null } }),
+    prisma.domainEvent.count({ where: { deadLetteredAt: { not: null } } }),
+    prisma.domainEvent.findFirst({
+      where: { dispatchedAt: null, deadLetteredAt: null },
+      orderBy: { occurredAt: 'asc' },
+      select: { occurredAt: true },
+    }),
+    prisma.domainEvent.findFirst({
+      where: { dispatchedAt: { not: null } },
+      orderBy: { dispatchedAt: 'desc' },
+      select: { occurredAt: true, dispatchedAt: true },
+    }),
+  ]);
+  return {
+    undispatched,
+    deadLettered,
+    oldestUndispatchedAgeMs: oldest ? now.getTime() - oldest.occurredAt.getTime() : 0,
+    lastDispatchLagMs: recentLag?.dispatchedAt ? recentLag.dispatchedAt.getTime() - recentLag.occurredAt.getTime() : null,
+  };
 }
 
 export async function pruneEvents(): Promise<number> {
@@ -163,6 +246,30 @@ export function registerJobs() {
     }).then(() => {})
   );
   jobRunner.register('agent-sweep', tick('agentsession.sweep'), 300_000);
+
+  // 071 US3 — lease reaper: lapsed driver leases close `expired`, bump the
+  // issue's fence token and re-pool the delegate slot. Runs every minute —
+  // a zombie must lose write power fast, not on the 5-min stall cadence.
+  durable.register('agentsession.leases', () =>
+    withAdvisoryLock('agentsession.leases', async () => {
+      const { sweepExpiredLeases } = await import('./agentSessionService.js');
+      const n = await sweepExpiredLeases();
+      if (n) console.log(`[jobs] lease sweep: ${n} session(s) expired`);
+    }).then(() => {})
+  );
+  jobRunner.register('agent-leases', tick('agentsession.leases'), 60_000);
+
+  // 071 — inbox retention + trace expiry (hourly; both are bounded working
+  // sets, never archives).
+  durable.register('agentinbox.prune', () =>
+    withAdvisoryLock('agentinbox.prune', async () => {
+      const { pruneInbox } = await import('./agentInboxService.js');
+      const { pruneExpiredTraces } = await import('./traceService.js');
+      const n = (await pruneInbox()) + (await pruneExpiredTraces());
+      if (n) console.log(`[jobs] agent prune: ${n} row(s) removed`);
+    }).then(() => {})
+  );
+  jobRunner.register('agent-prune', tick('agentinbox.prune'), 3_600_000);
 
   // 049 US2-3 — scheduled LDAP sync: enabled connections sync on their own
   // config.syncIntervalSec cadence. Advisory-locked sweep every minute.

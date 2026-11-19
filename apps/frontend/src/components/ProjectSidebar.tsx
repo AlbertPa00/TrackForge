@@ -85,6 +85,13 @@ const ICONS = {
       <path d="M9.5 1 3 9h3.5L6.5 15 13 7H9.5L9.5 1z" />
     </svg>
   ),
+  townhall: (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M8 1.5v3M4.5 3.5 6 5.5M11.5 3.5 10 5.5" />
+      <circle cx="8" cy="9" r="2.5" />
+      <path d="M2.5 13.5c1-2 3-3 5.5-3s4.5 1 5.5 3" />
+    </svg>
+  ),
 };
 
 const COLLAPSE_KEY = 'tf.sidebar.collapsed';
@@ -256,6 +263,7 @@ export default function ProjectSidebar({
           <NavItem icon="releases" label="Releases" to={`/projects/${projectKey}/releases`} collapsed={collapsed} />
           <NavItem icon="components" label="Components" to={`/projects/${projectKey}/components`} collapsed={collapsed} />
           <NavItem icon="automation" label="Automation" to={`/projects/${projectKey}/automation`} collapsed={collapsed} />
+          <NavItem icon="townhall" label="Town Hall" to={`/projects/${projectKey}/town-hall`} collapsed={collapsed} />
         </nav>
       </div>
 

@@ -304,4 +304,41 @@ export const MUTATION_REGISTRY: Record<string, MutationToolDecl> = {
   start_jira_import: { routes: [{ method: 'POST', path: '/api/internal/migration/jira-cloud' }], dryRun: 'body' },
   start_jira_server_import: { routes: [{ method: 'POST', path: '/api/internal/migration/jira-server' }], dryRun: 'body' },
   resume_import: { routes: [{ method: 'POST', path: '/api/internal/migration/{id}/resume' }], dryRun: false },
+
+  // --- 071 agent town hall ---
+  town_hall: {
+    routes: [
+      { method: 'POST', path: '/api/internal/town-hall/channels' },
+      { method: 'POST', path: '/api/internal/town-hall/topics' },
+      { method: 'POST', path: '/api/internal/town-hall/topics/{id}/posts' },
+      { method: 'PUT', path: '/api/internal/town-hall/topics/{id}/stances' },
+      { method: 'POST', path: '/api/internal/town-hall/topics/{id}/resolve' },
+    ],
+    dryRun: 'query', // resolve honors ?dryRun=true (DAG preview); other actions reject it
+  },
+  lease_work: {
+    routes: [
+      { method: 'POST', path: '/api/internal/agent/claim' },
+      { method: 'POST', path: '/api/internal/issues/{key}/lease' },
+      { method: 'POST', path: '/api/internal/issues/{key}/lease/break' },
+      { method: 'POST', path: '/api/internal/agent-sessions/{id}/heartbeat' },
+      { method: 'POST', path: '/api/internal/agent-sessions/{id}/release' },
+      { method: 'POST', path: '/api/internal/agent-sessions/{id}/traces' },
+      { method: 'POST', path: '/api/internal/agent-sessions/{id}/locks' },
+      { method: 'DELETE', path: '/api/internal/agent-sessions/{id}/locks' },
+    ],
+    dryRun: false,
+  },
+  ask_peer: { routes: [{ method: 'POST', path: '/api/internal/agent-questions/peer' }], dryRun: false },
+
+  // --- 072/073 proof-carrying work, repo memory & deliverable sign-off ---
+  work_receipts: { routes: [{ method: 'POST', path: '/api/internal/work-receipts' }], dryRun: false },
+  deliverable_review: {
+    routes: [{ method: 'POST', path: '/api/internal/issues/{key}/deliverable-review' }],
+    dryRun: false,
+  },
+  repo_advisories: {
+    routes: [{ method: 'POST', path: '/api/internal/projects/{key}/advisories' }],
+    dryRun: false,
+  },
 };

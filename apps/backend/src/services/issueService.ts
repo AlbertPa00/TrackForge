@@ -940,6 +940,9 @@ export interface TransitionBody {
   update?: {
     comment?: { add?: { body?: string } }[];
   };
+  /** 071 — optimistic concurrency + lease fencing (see UpdateIssueInput). */
+  expectedVersion?: number;
+  fenceToken?: number | null;
 }
 
 export async function executeTransition(
@@ -993,6 +996,12 @@ export interface UpdateIssueInput {
   };
   /** 031: Jira `fields.security` / `update.security[].set` — {id|name}|null. */
   security?: unknown;
+  /** 071 — optimistic concurrency: fail with 409 when the issue's version has
+   *  moved since the caller's last read (If-Match/expectedVersion). */
+  expectedVersion?: number;
+  /** 071 — lease fencing token from claimLease/claimReadyWork; stale or
+   *  foreign tokens reject with 409 FENCE_TOKEN_EXPIRED. */
+  fenceToken?: number | null;
 }
 
 async function planUpdate(issue: Awaited<ReturnType<typeof getIssueByKey>>, data: UpdateIssueInput) {
@@ -1413,11 +1422,20 @@ export async function updateIssue(issueKey: string, data: UpdateIssueInput, acto
   await requirePermission(actor, 'EDIT_ISSUES', { projectId: issue.projectId, issue });
   await checkFieldPermissions(actor, issue, data);
   if (data.assignee !== undefined) await checkAssign(actor, issue, data.assignee);
+  // 071 — optimistic version + lease fence before any plan work runs.
+  if (data.expectedVersion !== undefined && data.expectedVersion !== issue.version) {
+    throw new JiraApiError(
+      409,
+      jiraError([], { version: `Stale version — issue is at ${issue.version}; re-read and retry.`, currentVersion: String(issue.version) })
+    );
+  }
+  const { assertFence } = await import('./agentSessionService.js');
+  await assertFence(actor, issue.id, data.fenceToken);
   const { updateData, items, assignee, cfWrites } = await planUpdate(issue, data);
   const updated = await prisma.$transaction(async (tx) => {
     const u = await tx.issue.update({
-      where: { id: issue.id },
-      data: updateData,
+      where: { id: issue.id, ...(data.expectedVersion !== undefined ? { version: data.expectedVersion } : {}) },
+      data: { ...updateData, version: { increment: 1 } },
       include: issueInclude,
     });
     // 031: unsecured descendants mirror the parent's new effective level.
@@ -1499,6 +1517,16 @@ export async function updateIssue(issueKey: string, data: UpdateIssueInput, acto
       },
     });
     return u;
+  }).catch((e: unknown) => {
+    // extendedWhereUnique version guard raced a concurrent write — surface it
+    // as the same 409 the fast-path check raises.
+    if ((e as { code?: string }).code === 'P2025' && data.expectedVersion !== undefined) {
+      throw new JiraApiError(
+        409,
+        jiraError([], { version: 'Stale version — issue was updated concurrently; re-read and retry.' })
+      );
+    }
+    throw e;
   });
   // Auto-watch: new assignee follows the issue (their own autowatch pref — 066).
   if (assignee && assignee.type === 'human' && assignee.id !== actor.user.id) {
@@ -1907,6 +1935,10 @@ export function toIssueResponse(
       statusCategory: toStatusCategory(issue.status.category),
     },
     priority: { id: issue.priority.id, name: issue.priority.name },
+    // 071 — optimistic concurrency + lease fencing tokens (extension fields;
+    // agents pass them back as expectedVersion/fenceToken on writes).
+    tf_version: (issue as { version?: number }).version ?? 1,
+    tf_lastFenceToken: (issue as { lastFenceToken?: number }).lastFenceToken ?? 0,
     assignee: issue.assignee ? toUserResponse(issue.assignee as never) : null,
     delegate: issue.delegate ? toUserResponse(issue.delegate as never) : null,
     reporter: issue.reporter ? toUserResponse(issue.reporter as never) : null,

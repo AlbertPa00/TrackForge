@@ -169,6 +169,24 @@ export interface Issue {
   };
 }
 
+export interface CommentMetadata {
+  kind?: 'agent_dossier' | 'deliverable_review';
+  sessionId?: string | null;
+  outcome?: string;
+  branchName?: string | null;
+  baseSha?: string | null;
+  headSha?: string | null;
+  driftStatus?: string;
+  receiptIds?: string[];
+  changedFiles?: string[];
+  topicId?: string | null;
+  topicTitle?: string | null;
+  verdict?: 'approved' | 'changes_requested';
+  reviewerType?: string;
+  pinnedHeadSha?: string | null;
+  pinnedReceiptIds?: string[];
+}
+
 export interface Comment {
   id: string;
   author: UserRef;
@@ -176,6 +194,7 @@ export interface Comment {
   created: string;
   updated: string;
   channel?: string;
+  metadata?: CommentMetadata;
 }
 
 /** Sprint 018 — Jira attachment metadata. */
@@ -884,11 +903,23 @@ export interface AgentSessionView {
   delegator: string | null;
   trigger: string;
   status: string;
+  role?: string;
+  fenceToken?: number | null;
+  leaseExpiresAt?: string | null;
+  heartbeatAt?: string | null;
+  worktreeRef?: string | null;
   activities: { at: string; type: string; text: string; by: string }[];
   guidance: string | null;
   startedAt: string;
   finishedAt: string | null;
   lastActivityAt: string;
+  // 072 — git grounding + drift reconciliation
+  baseSha?: string | null;
+  headSha?: string | null;
+  branchName?: string | null;
+  driftStatus?: string;
+  driftReport?: unknown;
+  dossierCommentId?: string | null;
 }
 
 export function fetchIssueSessions(issueKey: string): Promise<{ sessions: AgentSessionView[] }> {
@@ -3780,3 +3811,550 @@ export interface RestoreStatus {
   error?: string;
 }
 export const fetchRestoreStatus = (): Promise<RestoreStatus> => request('/admin/system/restore-status', INTERNAL_BASE);
+
+// ---------- Sprint 071 — agent town hall, fleet roster, leases, inbox ----------
+
+export interface TownHallChannel {
+  id: string;
+  projectKey: string | null;
+  slug: string;
+  name: string;
+  description: string | null;
+  agentCooldownSec: number;
+  openTopics?: number;
+}
+
+export interface TownHallTopic {
+  id: string;
+  kind: string;
+  status: string;
+  title: string;
+  author: { accountId: string; displayName: string; agent: boolean } | null;
+  quorumRequired: number;
+  requiredRoles: string[];
+  decisionSummary: string | null;
+  resolvedBy: string | null;
+  resolvedAt: string | null;
+  postCount: number;
+  lastActivityAt: string;
+  createdAt: string;
+  channelSlug?: string;
+  projectKey?: string | null;
+  channelId?: string;
+  tally?: { endorse: number; object: number; abstain: number; quorumMet: boolean };
+}
+
+export interface TownHallPost {
+  id: number;
+  topicId: string;
+  parentId: number | null;
+  speechAct: string;
+  body: string;
+  channel: string;
+  refs: { issueKeys?: string[]; files?: string[]; commitSha?: string } | null;
+  author: { accountId: string; displayName: string; agent: boolean } | null;
+  receipts?: {
+    id: string;
+    kind: string;
+    sha256: string;
+    verification: string;
+    summary: string;
+    hasInlineContent?: boolean;
+    attachmentId?: string | null;
+  }[];
+  createdAt: string;
+}
+
+export interface TownHallDetail {
+  topic: TownHallTopic;
+  posts: TownHallPost[];
+  stances: {
+    actor: { accountId: string; displayName: string; agent: boolean };
+    stance: string;
+    reason: string | null;
+    resolved: boolean;
+    updatedAt: string;
+  }[];
+  tally: { endorse: number; object: number; abstain: number; quorumMet: boolean };
+  linkedIssues: { key: string; summary: string; status: string; relation: string; receiptCount?: number }[];
+}
+
+export const fetchTownHallChannels = (projectKey?: string): Promise<{ channels: TownHallChannel[] }> =>
+  request(`/town-hall/channels${projectKey ? `?project=${projectKey}` : ''}`, INTERNAL_BASE);
+
+export const createTownHallChannel = (body: {
+  projectKey?: string;
+  slug: string;
+  name: string;
+  description?: string;
+  agentCooldownSec?: number;
+}): Promise<TownHallChannel> =>
+  request('/town-hall/channels', INTERNAL_BASE, { method: 'POST', body: JSON.stringify(body) });
+
+export const fetchTownHallTopics = (opts?: {
+  channel?: string;
+  project?: string;
+  issue?: string;
+  kind?: string;
+  status?: string;
+  limit?: number;
+  before?: string;
+}): Promise<{ topics: TownHallTopic[]; nextCursor: string | null }> => {
+  const q = new URLSearchParams();
+  if (opts?.channel) q.set('channel', opts.channel);
+  if (opts?.project) q.set('project', opts.project);
+  if (opts?.issue) q.set('issue', opts.issue);
+  if (opts?.kind) q.set('kind', opts.kind);
+  if (opts?.status) q.set('status', opts.status);
+  if (opts?.limit) q.set('limit', String(opts.limit));
+  if (opts?.before) q.set('before', opts.before);
+  const qs = q.toString();
+  return request(`/town-hall/topics${qs ? `?${qs}` : ''}`, INTERNAL_BASE);
+};
+
+export const openTownHallTopic = (body: {
+  channelId: string;
+  kind?: string;
+  title: string;
+  body: string;
+  speechAct?: string;
+  quorumRequired?: number;
+  requiredRoles?: string[];
+  linkedIssueKeys?: string[];
+}): Promise<{ topic: TownHallTopic; post: TownHallPost; summoned: number }> =>
+  request('/town-hall/topics', INTERNAL_BASE, { method: 'POST', body: JSON.stringify(body) });
+
+export const fetchTownHallTopic = (id: string): Promise<TownHallDetail> =>
+  request(`/town-hall/topics/${id}`, INTERNAL_BASE);
+
+export const postToTownHallTopic = (
+  topicId: string,
+  body: { parentId?: number; speechAct: string; body: string; refs?: { issueKeys?: string[]; files?: string[]; commitSha?: string } }
+): Promise<TownHallPost> =>
+  request(`/town-hall/topics/${topicId}/posts`, INTERNAL_BASE, { method: 'POST', body: JSON.stringify(body) });
+
+export const putTownHallStance = (
+  topicId: string,
+  body: { stance: 'endorse' | 'object' | 'abstain'; reason?: string }
+): Promise<{ endorse: number; object: number; abstain: number; quorumMet: boolean }> =>
+  request(`/town-hall/topics/${topicId}/stances`, INTERNAL_BASE, { method: 'PUT', body: JSON.stringify(body) });
+
+export interface CompiledDagResult {
+  topic: TownHallTopic;
+  compiled: { tempId: string; issueKey: string }[];
+  epic: string | null;
+}
+
+export const resolveTownHallTopic = (
+  topicId: string,
+  body: {
+    decisionSummary: string;
+    overrideObjections?: boolean;
+    compileDag?: {
+      epic?: { summary: string; issueType?: string };
+      tasks: {
+        tempId: string;
+        summary: string;
+        issueType?: string;
+        description?: string;
+        roleHint?: string;
+        targetFiles?: string[];
+        blockedByTempIds?: string[];
+      }[];
+    };
+  },
+  dryRun = false
+): Promise<CompiledDagResult | { dryRun: true; plan: unknown }> =>
+  request(`/town-hall/topics/${topicId}/resolve${dryRun ? '?dryRun=true' : ''}`, INTERNAL_BASE, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+
+// --- fleet ---
+
+export interface FleetAgent {
+  accountId: string;
+  displayName: string;
+  role: string;
+  skills: string[];
+  model: string | null;
+  bio: string | null;
+  maxConcurrentLeases: number;
+  activeLeases: number;
+  status: 'online' | 'busy' | 'offline';
+  lastHeartbeatAt: string | null;
+  assignable: boolean;
+}
+
+export const fetchAgentRoster = (opts?: {
+  project?: string;
+  role?: string;
+  skill?: string;
+  status?: string;
+}): Promise<{ agents: FleetAgent[] }> => {
+  const q = new URLSearchParams();
+  if (opts?.project) q.set('project', opts.project);
+  if (opts?.role) q.set('role', opts.role);
+  if (opts?.skill) q.set('skill', opts.skill);
+  if (opts?.status) q.set('status', opts.status);
+  const qs = q.toString();
+  return request(`/agents/roster${qs ? `?${qs}` : ''}`, INTERNAL_BASE);
+};
+
+export interface FleetSession {
+  sessionId: string;
+  issueKey: string;
+  issueSummary: string;
+  issueStatus: string;
+  agent: { accountId: string; displayName: string };
+  delegator: string | null;
+  role: string;
+  status: string;
+  trigger: string;
+  fenceToken: number | null;
+  leaseExpiresAt: string | null;
+  heartbeatAt: string | null;
+  worktreeRef: string | null;
+  traceCount: number;
+  startedAt: string;
+  lastActivityAt: string;
+  // 072 — git grounding + drift reconciliation
+  baseSha?: string | null;
+  headSha?: string | null;
+  branchName?: string | null;
+  driftStatus?: string;
+  driftReport?: unknown;
+  dossierCommentId?: string | null;
+}
+
+export const fetchFleetSessions = (opts?: {
+  project?: string;
+  issue?: string;
+  status?: string;
+  role?: string;
+  agent?: string;
+  /** 072 — default now returns terminal history; true = live sessions only. */
+  activeOnly?: boolean;
+}): Promise<{ sessions: FleetSession[] }> => {
+  const q = new URLSearchParams();
+  if (opts?.project) q.set('project', opts.project);
+  if (opts?.issue) q.set('issue', opts.issue);
+  if (opts?.status) q.set('status', opts.status);
+  if (opts?.role) q.set('role', opts.role);
+  if (opts?.agent) q.set('agent', opts.agent);
+  if (opts?.activeOnly) q.set('activeOnly', '1');
+  const qs = q.toString();
+  return request(`/agent-sessions${qs ? `?${qs}` : ''}`, INTERNAL_BASE);
+};
+
+export const leaseIssue = (
+  issueKey: string,
+  body?: { agent?: { accountId?: string; name?: string }; ttlSec?: number; worktreeRef?: string }
+): Promise<{ sessionId: string; issueKey: string; fenceToken: number; leaseExpiresAt: string }> =>
+  request(`/issues/${issueKey}/lease`, INTERNAL_BASE, { method: 'POST', body: JSON.stringify(body ?? {}) });
+
+export const breakIssueLease = (issueKey: string): Promise<{ broken: boolean; sessionId: string }> =>
+  request(`/issues/${issueKey}/lease/break`, INTERNAL_BASE, { method: 'POST', body: '{}' });
+
+export const heartbeatSession = (
+  sessionId: string
+): Promise<{ sessionId: string; fenceToken: number | null; leaseExpiresAt: string; paused: boolean; unreadInbox: number }> =>
+  request(`/agent-sessions/${sessionId}/heartbeat`, INTERNAL_BASE, { method: 'POST', body: '{}' });
+
+export const releaseSession = (
+  sessionId: string,
+  body: {
+    outcome: 'completed' | 'ready_for_review' | 'handed_off' | 'failed';
+    summary: string;
+    nextAssignee?: string;
+    suggestedNextIssueKey?: string;
+    remainingSteps?: string[];
+    doNotRepeat?: string[];
+    /** 072 — git grounding: observed head + receipt ids to attach on release. */
+    headSha?: string;
+    receiptIds?: string[];
+    suppressComment?: boolean;
+  }
+): Promise<{ sessionId: string; status: string; driftStatus?: string; dossierCommentId?: string | null }> =>
+  request(`/agent-sessions/${sessionId}/release`, INTERNAL_BASE, { method: 'POST', body: JSON.stringify(body) });
+
+export interface AgentInboxItem {
+  id: number;
+  reason: string;
+  createdAt: string;
+  ackedAt: string | null;
+  issueKey: string | null;
+  issueSummary: string | null;
+  topic: { id: string; title: string; status: string } | null;
+  eventId: number | null;
+  payload: { issueKey?: string | null; fromActor?: unknown; snippet?: string; actionHint?: string | null };
+}
+
+export const fetchAgentInbox = (opts?: {
+  after?: number;
+  unread?: boolean;
+  reasons?: string[];
+  limit?: number;
+}): Promise<{ unreadCount: number; items: AgentInboxItem[]; nextCursor: number; hasMore: boolean }> => {
+  const q = new URLSearchParams();
+  if (opts?.after !== undefined) q.set('after', String(opts.after));
+  if (opts?.unread) q.set('unread', '1');
+  if (opts?.reasons?.length) q.set('reasons', opts.reasons.join(','));
+  if (opts?.limit) q.set('limit', String(opts.limit));
+  const qs = q.toString();
+  return request(`/agent-inbox${qs ? `?${qs}` : ''}`, INTERNAL_BASE);
+};
+
+export const ackAgentInbox = (body: { ids?: string[]; upToId?: number; all?: boolean }): Promise<{ acked: number }> =>
+  request('/agent-inbox/ack', INTERNAL_BASE, { method: 'POST', body: JSON.stringify(body) });
+
+export const fetchProjectTraces = (
+  projectKey: string
+): Promise<{ projectKey: string; traces: { target: string; contested: boolean; holders: { kind: string; issueKey: string; agent: string; sessionId: string; role: string; worktreeRef: string | null; summary: string | null; expiresAt: string }[] }[] }> =>
+  request(`/projects/${projectKey}/traces`, INTERNAL_BASE);
+
+export const setProjectFleetPause = (projectKey: string, paused: boolean, reason?: string): Promise<unknown> =>
+  request(`/projects/${projectKey}/pause`, INTERNAL_BASE, {
+    method: 'PUT',
+    body: JSON.stringify({ paused, ...(reason ? { reason } : {}) }),
+  });
+
+export const setGlobalFleetPause = (paused: boolean, reason?: string): Promise<unknown> =>
+  request('/fleet/pause', INTERNAL_BASE, { method: 'PUT', body: JSON.stringify({ paused, ...(reason ? { reason } : {}) }) });
+
+export const fetchFleetPause = (projectKey?: string): Promise<{ global: { paused: boolean; reason?: string }; project: { paused: boolean; reason?: string }; paused: boolean }> =>
+  request(`/fleet/pause${projectKey ? `?project=${projectKey}` : ''}`, INTERNAL_BASE);
+
+// ---------- Sprint 072 — proof-carrying work, locks, advisories, ledger, fleet health ----------
+
+export interface FleetRunnerStatus {
+  mode: string;
+  degraded: boolean;
+  lastProbeAt: string | null;
+  lastError: string | null;
+}
+
+export interface OutboxHealth {
+  undispatched: number;
+  deadLettered: number;
+  oldestUndispatchedAgeMs: number;
+  lastDispatchLagMs: number | null;
+}
+
+export const fetchFleetHealth = (): Promise<{ status: 'ok' | 'degraded'; runner: FleetRunnerStatus; outbox: OutboxHealth }> =>
+  request('/fleet/health', INTERNAL_BASE);
+
+export const fetchFleetMetrics = (): Promise<{
+  runner: FleetRunnerStatus;
+  outbox: OutboxHealth;
+  fleet: { openSessions: number; waitlistDepth: number; activeLocks: number; paused: boolean };
+}> => request('/fleet/metrics', INTERNAL_BASE);
+
+export interface ResourceLockView {
+  id: string;
+  pathPattern: string;
+  mode: string;
+  fenceToken: number | null;
+  expiresAt: string;
+  sessionId: string;
+  agent: string;
+  issueKey: string;
+  queueDepth?: number;
+}
+
+export const fetchProjectLocks = (
+  projectKey: string
+): Promise<{ locks: ResourceLockView[]; waiters: { path: string; agent: string; since: string }[] }> =>
+  request(`/projects/${projectKey}/locks`, INTERNAL_BASE);
+
+export interface RepoAdvisory {
+  id: string;
+  pathGlob: string;
+  summary: string;
+  severity: 'info' | 'warn' | 'critical' | string;
+  sourceIssueKey: string | null;
+  createdBy: string;
+  expiresAt: string | null;
+  createdAt: string;
+}
+
+export const fetchAdvisories = (projectKey: string, path?: string): Promise<{ advisories: RepoAdvisory[] }> =>
+  request(`/projects/${projectKey}/advisories${path ? `?path=${encodeURIComponent(path)}` : ''}`, INTERNAL_BASE);
+
+export const createAdvisory = (
+  projectKey: string,
+  body: { pathGlob: string; summary: string; severity?: 'info' | 'warn' | 'critical'; sourceIssueKey?: string; expiresInSec?: number }
+): Promise<RepoAdvisory> =>
+  request(`/projects/${projectKey}/advisories`, INTERNAL_BASE, { method: 'POST', body: JSON.stringify(body) });
+
+export const deleteAdvisory = (projectKey: string, id: string): Promise<{ retired: boolean }> =>
+  request(`/projects/${projectKey}/advisories/${id}`, INTERNAL_BASE, { method: 'DELETE' });
+
+export type ReceiptKind = 'diff' | 'test_run' | 'benchmark' | 'build' | 'command';
+export type ReceiptVerification =
+  | 'digest_only'
+  | 'unverified'
+  | 'hash_verified'
+  | 'scm_corroborated'
+  | 'human_attested'
+  | 'signed_ci';
+
+export interface WorkReceipt {
+  id: string;
+  kind: ReceiptKind;
+  sha256: string;
+  gitCommitSha: string | null;
+  gitBranch: string | null;
+  issueKey: string | null;
+  sessionId?: string | null;
+  topicPostId?: number | null;
+  summary: string;
+  metrics: Record<string, unknown> | null;
+  artifactUri: string | null;
+  changedFiles: string[];
+  contentType: string | null;
+  hasInlineContent: boolean;
+  contentByteLength: number | null;
+  attachmentId: string | null;
+  attachment: {
+    id: string;
+    filename: string;
+    mimeType: string;
+    size: number;
+    contentUrl: string;
+  } | null;
+  verification: ReceiptVerification;
+  verifiedAt: string | null;
+  author: { accountId: string; displayName: string } | null;
+  createdAt: string;
+}
+
+export interface WorkReceiptDetail extends WorkReceipt {
+  content: string | null;
+}
+
+export const submitWorkReceipt = (body: {
+  issueKey?: string;
+  sessionId?: string;
+  topicPostId?: number;
+  kind: ReceiptKind;
+  sha256?: string;
+  content?: string;
+  contentType?: string;
+  attachmentId?: string;
+  changedFiles?: string[];
+  gitCommitSha?: string;
+  gitBranch?: string;
+  summary: string;
+  metrics?: Record<string, unknown>;
+  artifactUri?: string;
+}): Promise<WorkReceipt> => request('/work-receipts', INTERNAL_BASE, { method: 'POST', body: JSON.stringify(body) });
+
+export const fetchWorkReceipt = (receiptId: string): Promise<WorkReceiptDetail> =>
+  request(`/work-receipts/${receiptId}`, INTERNAL_BASE);
+
+export const fetchIssueReceipts = (issueKey: string): Promise<{ receipts: WorkReceipt[] }> =>
+  request(`/issues/${issueKey}/receipts`, INTERNAL_BASE);
+
+export type LedgerKind =
+  | 'lease_claimed'
+  | 'lease_handed_off'
+  | 'lease_ready_for_review'
+  | 'lease_completed'
+  | 'lease_failed'
+  | 'lease_broken'
+  | 'lease_expired'
+  | 'receipt_submitted'
+  | 'receipt_verified'
+  | 'deliverable_approved'
+  | 'deliverable_changes_requested'
+  | 'peer_question_answered'
+  | 'topic_compiled'
+  | 'drift_flagged';
+
+export interface DeliverableReview {
+  id: string;
+  verdict: 'approved' | 'changes_requested';
+  body: string | null;
+  pinnedHeadSha: string | null;
+  pinnedReceiptIds: string[];
+  sessionId: string | null;
+  commentId: string | null;
+  supersededAt: string | null;
+  stale: boolean;
+  reviewer: { accountId: string; displayName: string; type: string };
+  createdAt: string;
+}
+
+export interface IssueProvenance {
+  issueKey: string;
+  topics: {
+    topicId: string;
+    relation: string;
+    title: string;
+    kind: string;
+    status: string;
+    channelSlug: string;
+    channelName: string;
+    decisionSummary: string | null;
+    author: { accountId: string; displayName: string; type: string };
+    resolvedBy: { accountId: string; displayName: string; type: string } | null;
+    resolvedAt: string | null;
+    evidenceReceipts: { id: string; postId: number; kind: string; sha256: string; verification: string; summary: string }[];
+  }[];
+  receipts: WorkReceipt[];
+  changedFiles: string[];
+  latestDriverSession: {
+    id: string;
+    status: string;
+    outcome: string | null;
+    agent: { accountId: string; displayName: string };
+    branchName: string | null;
+    baseSha: string | null;
+    headSha: string | null;
+    driftStatus: string;
+    driftReport: unknown;
+    dossierCommentId: string | null;
+    finishedAt: string | null;
+  } | null;
+  deliverableReview: {
+    status: 'none' | 'awaiting_review' | 'approved' | 'changes_requested' | 'stale';
+    activeApproval: DeliverableReview | null;
+    latestReview: DeliverableReview | null;
+    reviews: DeliverableReview[];
+  };
+}
+
+export const fetchIssueProvenance = (issueKey: string): Promise<IssueProvenance> =>
+  request(`/issues/${issueKey}/provenance`, INTERNAL_BASE);
+
+export const fetchDeliverableReviews = (issueKey: string): Promise<{ reviews: DeliverableReview[] }> =>
+  request(`/issues/${issueKey}/deliverable-reviews`, INTERNAL_BASE);
+
+export const submitDeliverableReview = (
+  issueKey: string,
+  body: { verdict: 'approved' | 'changes_requested'; body?: string; receiptIds?: string[]; headSha?: string }
+): Promise<DeliverableReview> =>
+  request(`/issues/${issueKey}/deliverable-review`, INTERNAL_BASE, { method: 'POST', body: JSON.stringify(body) });
+
+export interface IssueLedgerEntry {
+  id: number;
+  kind: LedgerKind | string;
+  summary: string;
+  payload: unknown;
+  receipt: { id: string; kind: string; verification: string; summary: string } | null;
+  sessionId: string | null;
+  actor: { accountId: string; displayName: string; type: string } | null;
+  createdAt: string;
+}
+
+export const fetchIssueLedger = (issueKey: string, opts?: { limit?: number; before?: number }): Promise<{ entries: IssueLedgerEntry[]; nextBefore: number | null }> => {
+  const q = new URLSearchParams();
+  if (opts?.limit) q.set('limit', String(opts.limit));
+  if (opts?.before) q.set('before', String(opts.before));
+  const qs = q.toString();
+  return request(`/issues/${issueKey}/ledger${qs ? `?${qs}` : ''}`, INTERNAL_BASE);
+};
+
+export const resetAgentCircuit = (userId: string): Promise<{ reset: boolean; trips?: number }> =>
+  request(`/fleet/agents/${userId}/circuit/reset`, INTERNAL_BASE, { method: 'POST', body: '{}' });

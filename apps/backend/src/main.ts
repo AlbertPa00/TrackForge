@@ -32,6 +32,8 @@ import { meRouter } from './routes/me.js';
 import { adminIdpRouter, identityAuthRouter } from './routes/identity.js';
 import { devReceiverRouter, devAdminRouter, devIssueRouter, devGitlabRouter, devinfoRouter } from './routes/dev.js';
 import { agentRouter } from './routes/agentSessions.js';
+import { townHallRouter } from './routes/townHall.js';
+import { fleetRouter } from './routes/agentFleet.js';
 import { projectExtrasRouter } from './routes/projectExtras.js';
 import { aiRouter } from './routes/ai.js';
 import { searchInternalRouter } from './routes/search.js'; // 068 — /search/aggregate
@@ -54,7 +56,7 @@ import { ZodError } from 'zod/v3';
 import { Prisma } from './lib/pc.js';
 import { formatZodErrors } from './lib/validation.js';
 import { JiraApiError, jiraError } from './lib/errors.js';
-import { requireAuth, rateLimit, authRateLimit, ipRateLimit } from './middleware/auth.js';
+import { requireAuth, rateLimit, authRateLimit, ipRateLimit, agentCircuitBreaker } from './middleware/auth.js';
 import { proposalGate } from './middleware/proposals.js';
 import { idempotency } from './middleware/idempotency.js';
 import { publicBaseUrl, validateEnv } from './config.js';
@@ -245,7 +247,7 @@ for (const v of ['2', '3'])
 // 070 — raised for shared-egress agent fleets (1,000 agents behind one NAT
 // gateway need headroom; PAT lookups are cached so bad tokens stay cheap).
 app.use(['/rest', '/api/internal'], ipRateLimit(Number(process.env.PRE_AUTH_RATE_LIMIT ?? 5000)));
-app.use(['/rest', '/api/internal'], requireAuth, rateLimit, idempotency);
+app.use(['/rest', '/api/internal'], requireAuth, rateLimit, agentCircuitBreaker, idempotency);
 app.use(['/rest', '/api/internal'], proposalGate);
 
 // 065 audit D5 — dev admin + issue routers mount under the global chain: rate
@@ -301,6 +303,8 @@ app.use('/api/internal/jql', jqlInternalRouter); // 032 function registry
 app.use('/api/internal/automation', automationRouter); // 034
 app.use('/api/internal/issues', issueOpsRouter); // /{key}/clone|move (022) — before migrationRouter's blanket requireAdmin
 app.use('/api/internal', agentRouter); // 047 — /issues/{k}/sessions + /agent-sessions + /agent-questions
+app.use('/api/internal', townHallRouter); // 071 — /town-hall/*
+app.use('/api/internal', fleetRouter); // 071 — /agents/roster + /agent-inbox + /fleet/* + /issues/{k}/context-pack + /projects/{k}/traces|pause
 app.use('/api/internal', projectExtrasRouter); // 058 — /projects/{k}/summary
 app.use('/api/internal/admin/oauth', oauthAdminRouter); // 049 — client CRUD
 app.use('/api/internal/admin', directoryAdminRouter); // 049 — /directory* (SCIM+LDAP)

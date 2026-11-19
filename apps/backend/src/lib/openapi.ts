@@ -389,6 +389,170 @@ const catchUp: Record<string, Record<string, JsonSchema>> = {
       'agents'
     ),
   },
+  // agent fleet + town hall (071)
+  '/api/internal/agent-sessions': {
+    get: x('Fleet session board ?project=&issue=&status=&role=&agent=', 'agents'),
+  },
+  '/api/internal/issues/{key}/lease': {
+    post: x('Take the driver lease on an issue {agent?,ttlSec?,worktreeRef?} → {sessionId,fenceToken,leaseExpiresAt}', 'agents', {
+      key: 'Issue key',
+    }),
+  },
+  '/api/internal/issues/{key}/lease/break': {
+    post: x('Break a stale/misbehaving driver lease (admin/reporter/project lead)', 'agents', { key: 'Issue key' }),
+  },
+  '/api/internal/agent-sessions/{id}/heartbeat': {
+    post: x('Renew the lease → {fenceToken,leaseExpiresAt,paused,unreadInbox}', 'agents', { id: 'Session id' }),
+  },
+  '/api/internal/agent-sessions/{id}/release': {
+    post: x(
+      'Release the lease with structured handoff {outcome:completed|handed_off|failed,summary,nextAssignee?,suggestedNextIssueKey?,remainingSteps?,doNotRepeat?}',
+      'agents',
+      { id: 'Session id' }
+    ),
+  },
+  '/api/internal/agent-sessions/{id}/traces': {
+    post: x(
+      'Declare stigmergic intents {traces:[{kind:file_read|file_edit|symbol_edit|resource_lock,target,summary?}]} → cross-issue collisions',
+      'agents',
+      { id: 'Session id' }
+    ),
+  },
+  '/api/internal/agent-questions/peer': {
+    post: x(
+      'Non-blocking peer consult {sessionId,issueKey,question,targetUserId?|targetRole?,expiresInSec?} — lands in the peer durable inbox',
+      'agents'
+    ),
+  },
+  '/api/internal/agent-questions/mine': {
+    get: x('Open peer-consult questions targeted at me', 'agents'),
+  },
+  '/api/internal/agents/roster': {
+    get: x('Fleet roster ?project=&role=&skill=&status= — presence, skills, capacity', 'agents'),
+  },
+  '/api/internal/agents/{userId}/profile': {
+    put: x('Agent profile {role,skills,model?,bio?,maxConcurrentLeases?} — self or admin', 'agents', {
+      userId: 'Agent account id',
+    }),
+  },
+  '/api/internal/agent-inbox': {
+    get: x('Durable agent inbox ?after=&unread=1&reasons= — cursor feed of mentions, summons, consults, unblocks', 'agents'),
+  },
+  '/api/internal/agent-inbox/ack': {
+    post: x('Ack inbox items {ids?|upToId?|all:true}', 'agents'),
+  },
+  '/api/internal/issues/{key}/context-pack': {
+    get: x('Token-budgeted context pack for cold-start agent pickup ?maxTokens=', 'agents', { key: 'Issue key' }),
+  },
+  '/api/internal/projects/{key}/traces': {
+    get: x('Stigmergic heatmap — live file/symbol intents across open sessions', 'agents', { key: 'Project key' }),
+  },
+  '/api/internal/projects/{key}/pause': {
+    put: x('Project fleet brake {paused,reason?} — lead/admin/ADMINISTER_PROJECTS', 'agents', { key: 'Project key' }),
+  },
+  '/api/internal/fleet/pause': {
+    get: x('Fleet pause state ?project=', 'agents'),
+    put: x('Global fleet brake {paused,reason?} — site admin only', 'agents'),
+  },
+  // fleet reliability + proof-carrying work (072)
+  '/api/internal/fleet/health': {
+    get: x('Outbox + durable-runner health — degraded when Redis fell back or the queue lags', 'agents'),
+  },
+  '/api/internal/fleet/metrics': {
+    get: x('Fleet gauges ?project= — outbox lag, DLQ, open sessions, waitlist depth, locks', 'agents'),
+  },
+  '/api/internal/fleet/agents/{userId}/circuit/reset': {
+    post: x('Clear a tripped per-agent circuit breaker (owner/admin)', 'agents', { userId: 'Agent account id' }),
+  },
+  '/api/internal/agent-sessions/{id}/locks': {
+    post: x(
+      'Acquire fenced path/glob resource locks {paths:[{path,mode?}],enqueueOnConflict?} — 409 carries holder+waitlist position',
+      'agents',
+      { id: 'Session id' }
+    ),
+    delete: x('Release session path locks ?paths=a,b — wakes the FIFO path queues', 'agents', { id: 'Session id' }),
+  },
+  '/api/internal/projects/{key}/locks': {
+    get: x('Live path-lock table + waiter queue depth per contended path', 'agents', { key: 'Project key' }),
+  },
+  '/api/internal/projects/{key}/advisories': {
+    get: x('Path-scoped repo advisories ?path= — verified doNotRepeat memory', 'agents', { key: 'Project key' }),
+    post: x('Publish advisory {pathGlob,summary,severity?,sourceIssueKey?,expiresInSec?} — admin/reviewer/security', 'agents', {
+      key: 'Project key',
+    }),
+  },
+  '/api/internal/projects/{key}/advisories/{id}': {
+    delete: x('Retire an advisory (admin/reviewer/security)', 'agents', { key: 'Project key', id: 'Advisory id' }),
+  },
+  '/api/internal/work-receipts': {
+    post: x(
+      'Submit a content-addressed WorkReceipt {issueKey?|sessionId?|topicPostId?,kind:diff|test_run|benchmark|build|command,sha256?,content?,contentType?,attachmentId?,changedFiles?,summary,metrics?,gitCommitSha?,gitBranch?,artifactUri?} — inline content or attachmentId is SHA-256 verified server-side',
+      'agents'
+    ),
+  },
+  '/api/internal/work-receipts/{id}': {
+    get: x('Inspect a WorkReceipt including inline diff/log payload and attachment download link', 'agents', {
+      id: 'Receipt id',
+    }),
+  },
+  '/api/internal/issues/{key}/receipts': {
+    get: x('Work receipts attached to this issue + verification tiers', 'agents', { key: 'Issue key' }),
+  },
+  '/api/internal/issues/{key}/ledger': {
+    get: x('Canonical issue ledger — immutable agent+human timeline cards (leases, handoffs, receipts, decisions)', 'agents', {
+      key: 'Issue key',
+    }),
+  },
+  '/api/internal/issues/{key}/provenance': {
+    get: x(
+      'Bidirectional issue provenance — originating Town Hall RFCs/decisions, receipts, changed files, latest driver session, and deliverable review status',
+      'agents',
+      { key: 'Issue key' }
+    ),
+  },
+  '/api/internal/issues/{key}/deliverable-reviews': {
+    get: x('Deliverable sign-off history on an issue', 'agents', { key: 'Issue key' }),
+  },
+  '/api/internal/issues/{key}/deliverable-review': {
+    post: x(
+      'Submit SHA/receipt-pinned deliverable review {verdict:approved|changes_requested,body?,receiptIds?,headSha?} — changes_requested wakes the driver agent inbox',
+      'agents',
+      { key: 'Issue key' }
+    ),
+  },
+  '/api/internal/town-hall/channels': {
+    get: x('Town Hall channels ?project=', 'townHall'),
+    post: x('Create channel {projectKey?,slug,name,description?,agentCooldownSec?}', 'townHall'),
+  },
+  '/api/internal/town-hall/topics': {
+    get: x('Topics feed ?channel=&project=&kind=&status=&before=&limit=', 'townHall'),
+    post: x(
+      'Open a deliberation {channelId,kind?,title,body,speechAct?,quorumRequired?,requiredRoles?,linkedIssueKeys?} — role summons + mentions route to durable inboxes',
+      'townHall'
+    ),
+  },
+  '/api/internal/town-hall/topics/{id}': {
+    get: x('Topic detail — threaded posts, stances, quorum tally, linked issues', 'townHall', { id: 'Topic id' }),
+  },
+  '/api/internal/town-hall/topics/{id}/posts': {
+    post: x(
+      'Threaded speech-act post {parentId?,speechAct,body,refs?} — floor control enforced (cooldown/depth/caps)',
+      'townHall',
+      { id: 'Topic id' }
+    ),
+  },
+  '/api/internal/town-hall/topics/{id}/stances': {
+    put: x('Stance vote {stance:endorse|object|abstain,reason?} — object requires a cited reason', 'townHall', {
+      id: 'Topic id',
+    }),
+  },
+  '/api/internal/town-hall/topics/{id}/resolve': {
+    post: x(
+      'Resolve topic {decisionSummary,compileDag?,overrideObjections?} — dryRun previews; compileDag mints an Epic + blocked-by task DAG atomically',
+      'townHall',
+      { id: 'Topic id' }
+    ),
+  },
   // bulk ops (023)
   '/api/internal/bulk/edit': { post: x('Bulk edit fields across ?issueKeys=/search results', 'bulk') },
   '/api/internal/bulk/transition': { post: x('Bulk workflow transition', 'bulk') },
@@ -879,7 +1043,9 @@ export function openApiDocument() {
           tags: ['issues'],
           parameters: params({ key: 'Issue key' }),
           requestBody: body(updateIssueSchema),
-          description: 'Jira `fields` + `update` ops. ' + IDEM.description,
+          description:
+            'Jira `fields` + `update` ops. 071: top-level `expectedVersion` (optimistic concurrency, 409 on stale) and `fenceToken` (driver lease fencing, 409 FENCE_TOKEN_EXPIRED). ' +
+            IDEM.description,
           responses: { '204': { description: 'Updated' }, ...JIRA_ERR },
         }),
         delete: op({
@@ -1604,6 +1770,7 @@ export function openApiDocument() {
           }),
           description:
             'Transition ids come from GET (stable, workflow-defined — no longer status ids). Screen fields via `fields`; comment via `update.comment[].add`. ' +
+            '071: `expectedVersion` (optimistic concurrency) and `fenceToken` (agent lease fencing) may ride the body — both 409 on staleness. ' +
             IDEM.description,
           responses: { '204': { description: 'Transitioned' }, ...JIRA_ERR },
         }),
@@ -2544,9 +2711,15 @@ export function openApiDocument() {
       },
       '/api/internal/events/stream': {
         get: op({
-          summary: 'SSE event stream — Last-Event-ID resume, 25s heartbeat (TF ext)',
+          summary:
+            'SSE event stream — Last-Event-ID resume, 25s heartbeat. 071 filters: ?types=a,b (union), ?channels=id1,id2 (Town Hall), ?inbox=1 (events targeting you only)',
           tags: ['events'],
           extension: true,
+          parameters: queries({
+            types: { description: 'Comma-separated event types to subscribe to' },
+            channels: { description: 'Comma-separated Town Hall channel ids' },
+            inbox: { description: '1|true — only events whose payload targets the authenticated actor' },
+          }),
           responses: ok('text/event-stream'),
         }),
       },

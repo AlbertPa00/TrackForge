@@ -48,7 +48,7 @@
     "zod-to-json-schema": "3.25.2",
     "@prisma/adapter-pg": "^7.10.1",
     "pg": "^8.16.0",
-    "dotenv": "^16.4.0"
+    "dotenv": "^18.0.10"
   },
   "devDependencies": {
     "@types/compression": "^1.7.5",

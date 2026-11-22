@@ -100,7 +100,7 @@ jobs:
           cosign sign --yes "${{ env.IMAGE }}@${{ steps.build.outputs.digest }}"
 
       - name: GitHub Release (artifacts + SBOM)
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             docker-compose.prod.yml
